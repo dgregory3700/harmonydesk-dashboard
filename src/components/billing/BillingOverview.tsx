@@ -63,9 +63,7 @@ export function BillingOverview() {
     .filter((inv) => inv.status === "Draft")
     .reduce((sum, inv) => sum + inv.hours * inv.rate, 0);
 
-  function handleInputChange(
-    e: ChangeEvent<HTMLInputElement>
-  ) {
+  function handleInputChange(e: ChangeEvent<HTMLInputElement>) {
     const { name, value } = e.target;
     setForm((prev) => ({ ...prev, [name]: value }));
   }
@@ -77,7 +75,6 @@ export function BillingOverview() {
     const rate = parseFloat(form.rate || "0");
 
     if (!form.caseNumber.trim() || !form.matter.trim()) {
-      // minimum sanity check
       return;
     }
 
@@ -101,6 +98,14 @@ export function BillingOverview() {
       rate: "",
     });
     setShowForm(false);
+  }
+
+  function handleStatusChange(id: string, newStatus: InvoiceStatus) {
+    setInvoices((prev) =>
+      prev.map((inv) =>
+        inv.id === id ? { ...inv, status: newStatus } : inv
+      )
+    );
   }
 
   return (
@@ -263,9 +268,33 @@ export function BillingOverview() {
                   ${amount.toLocaleString()}
                 </p>
                 <p className="text-[11px] text-slate-500">{inv.due}</p>
-                <button className="mt-1 text-[11px] rounded-full border border-slate-700 px-2 py-0.5 text-slate-200 hover:bg-slate-800">
-                  {inv.status === "Draft" ? "Prepare & send" : "View"}
-                </button>
+
+                <div className="flex items-center justify-end gap-2">
+                  <select
+                    value={inv.status}
+                    onChange={(e) =>
+                      handleStatusChange(
+                        inv.id,
+                        e.target.value as InvoiceStatus
+                      )
+                    }
+                    className="text-[10px] rounded-full border border-slate-700 bg-slate-900 px-2 py-0.5 text-slate-200 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                  >
+                    <option value="Draft">Draft</option>
+                    <option value="Sent">Sent</option>
+                    <option value="For county report">
+                      For county report
+                    </option>
+                  </select>
+
+                  <button className="text-[11px] rounded-full border border-slate-700 px-2 py-0.5 text-slate-200 hover:bg-slate-800">
+                    {inv.status === "Draft"
+                      ? "Prepare & send"
+                      : inv.status === "Sent"
+                      ? "View invoice"
+                      : "View for report"}
+                  </button>
+                </div>
               </div>
             </div>
           );
@@ -274,4 +303,5 @@ export function BillingOverview() {
     </div>
   );
 }
+
 
