@@ -1,10 +1,9 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import Link from "next/link";
 import { auth } from "@/lib/auth";
 
-export default function Topbar() {
+export function Topbar() {
   const router = useRouter();
 
   function handleLogout() {
@@ -17,8 +16,9 @@ export default function Topbar() {
       <div className="text-sm text-slate-400">Welcome back 👋</div>
 
       <button
+        type="button"
         onClick={handleLogout}
-        className="text-xs px-3 py-1 rounded-full border border-slate-700 hover:bg-slate-900"
+        className="text-xs px-3 py-1 rounded-full border border-slate-700 hover:bg-slate-900 text-slate-100"
       >
         Log out
       </button>
