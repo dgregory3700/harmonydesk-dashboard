@@ -10,12 +10,14 @@ import {
   Link2,
   Users,
   Settings,
+  FileText,
 } from "lucide-react";
 
 const navItems = [
   { href: "/dashboard", label: "Overview", icon: LayoutDashboard },
   { href: "/calendar", label: "Calendar", icon: Calendar },
   { href: "/cases", label: "Cases", icon: FolderKanban },
+  { href: "/billing", label: "Billing & Courts", icon: FileText },
   { href: "/messages", label: "Messages", icon: Inbox },
   { href: "/booking-links", label: "Booking links", icon: Link2 },
   { href: "/clients", label: "Clients", icon: Users },
