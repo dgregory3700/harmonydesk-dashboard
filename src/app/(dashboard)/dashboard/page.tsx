@@ -1,5 +1,7 @@
 import { RequireAuth } from "@/components/auth/RequireAuth";
 import { DashboardGreeting } from "@/components/dashboard/DashboardGreeting";
+import { SessionsOverview } from "@/components/dashboard/SessionsOverview";
+import { TodayPanel } from "@/components/dashboard/TodayPanel";
 
 export default function DashboardPage() {
   const stats = [
@@ -14,6 +16,7 @@ export default function DashboardPage() {
       <div className="space-y-6">
         <DashboardGreeting />
 
+        {/* Top stats row */}
         <div className="grid gap-4 md:grid-cols-4">
           {stats.map((s) => (
             <div
@@ -27,9 +30,16 @@ export default function DashboardPage() {
             </div>
           ))}
         </div>
+
+        {/* Main content row: sessions + today panel */}
+        <div className="grid gap-4 lg:grid-cols-[2fr,1fr]">
+          <SessionsOverview />
+          <TodayPanel />
+        </div>
       </div>
     </RequireAuth>
   );
 }
+
 
 
