@@ -1,4 +1,5 @@
 import { RequireAuth } from "@/components/auth/RequireAuth";
+import { DashboardGreeting } from "@/components/dashboard/DashboardGreeting";
 
 export default function DashboardPage() {
   const stats = [
@@ -11,7 +12,7 @@ export default function DashboardPage() {
   return (
     <RequireAuth>
       <div className="space-y-6">
-        <h1 className="text-2xl font-semibold tracking-tight">Overview</h1>
+        <DashboardGreeting />
 
         <div className="grid gap-4 md:grid-cols-4">
           {stats.map((s) => (
@@ -20,7 +21,9 @@ export default function DashboardPage() {
               className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4"
             >
               <p className="text-xs text-slate-400">{s.label}</p>
-              <p className="mt-2 text-xl font-semibold">{s.value}</p>
+              <p className="mt-2 text-xl font-semibold text-slate-50">
+                {s.value}
+              </p>
             </div>
           ))}
         </div>
@@ -28,4 +31,5 @@ export default function DashboardPage() {
     </RequireAuth>
   );
 }
+
 
