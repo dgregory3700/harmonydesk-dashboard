@@ -15,13 +15,8 @@ export default function LoginPage() {
         </div>
 
         {/* Sign-in form (no real auth yet – Phase 1 is UI only) */}
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            // Phase 2: we will wire this up to real auth + redirect
-          }}
-          className="space-y-4"
-        >
+        <form className="space-y-4">
+
           <div>
             <label
               htmlFor="email"
