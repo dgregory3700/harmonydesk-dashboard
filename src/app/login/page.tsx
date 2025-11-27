@@ -10,8 +10,12 @@ export default function LoginPage() {
 
   function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
+
+    const formData = new FormData(e.currentTarget);
+    const email = String(formData.get("email") || "").trim();
+
     // For now, any email/password is "valid"
-    auth.logIn();
+    auth.logIn(email);
     router.push("/dashboard");
   }
 
@@ -28,7 +32,7 @@ export default function LoginPage() {
             Sign in to HarmonyDesk
           </h1>
           <p className="mt-2 text-sm text-slate-400">
-            Welcome back. Enter your details to access your dashboard.
+            Secure access to your sessions, clients, and schedule.
           </p>
         </div>
 
@@ -43,6 +47,7 @@ export default function LoginPage() {
             </label>
             <input
               id="email"
+              name="email"
               type="email"
               required
               className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-50 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500"
@@ -67,6 +72,7 @@ export default function LoginPage() {
             </div>
             <input
               id="password"
+              name="password"
               type="password"
               required
               className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-50 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500"
@@ -82,11 +88,9 @@ export default function LoginPage() {
           </button>
         </form>
 
-        <p className="mt-6 text-center text-xs text-slate-500">
-          Don&apos;t have an account yet?{" "}
-          <span className="text-slate-300">
-            (We&apos;ll add sign-up later.)
-          </span>
+        <p className="mt-3 text-[11px] text-center text-slate-500">
+          For now, you can use <span className="text-slate-300">any</span> email
+          and password. We&apos;ll connect real accounts later.
         </p>
 
         <div className="mt-6 text-center flex flex-col gap-2">
