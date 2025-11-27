@@ -2,25 +2,13 @@
 
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-// (make sure this import exists at the top)
+import { auth } from "@/lib/auth";
 
-{/* Add near the right side controls */}
-<Link
-  href="/login"
-  className="text-xs font-medium text-slate-300 hover:text-white border border-slate-700 rounded-full px-3 py-1"
->
-  Log out
-</Link>
-
-export function Topbar() {
+export default function Topbar() {
   const router = useRouter();
 
-  async function handleLogout() {
-    try {
-      await fetch("/api/logout", { method: "POST" });
-    } catch {
-      // ignore errors for now
-    }
+  function handleLogout() {
+    auth.logOut();
     router.push("/login");
   }
 
