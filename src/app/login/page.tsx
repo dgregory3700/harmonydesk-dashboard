@@ -1,0 +1,91 @@
+// src/app/login/page.tsx
+import Link from "next/link";
+
+export default function LoginPage() {
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-slate-950">
+      <div className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-2xl p-8 shadow-lg">
+        <div className="mb-6 text-center">
+          <h1 className="text-2xl font-semibold text-slate-50">
+            Sign in to HarmonyDesk
+          </h1>
+          <p className="mt-2 text-sm text-slate-400">
+            Welcome back. Enter your details to access your dashboard.
+          </p>
+        </div>
+
+        {/* Sign-in form (no real auth yet – Phase 1 is UI only) */}
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            // Phase 2: we will wire this up to real auth + redirect
+          }}
+          className="space-y-4"
+        >
+          <div>
+            <label
+              htmlFor="email"
+              className="block text-sm font-medium text-slate-200"
+            >
+              Email
+            </label>
+            <input
+              id="email"
+              type="email"
+              required
+              className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-50 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              placeholder="you@example.com"
+            />
+          </div>
+
+          <div>
+            <div className="flex items-center justify-between">
+              <label
+                htmlFor="password"
+                className="block text-sm font-medium text-slate-200"
+              >
+                Password
+              </label>
+              <button
+                type="button"
+                className="text-xs text-indigo-400 hover:text-indigo-300"
+              >
+                Forgot password?
+              </button>
+            </div>
+            <input
+              id="password"
+              type="password"
+              required
+              className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-50 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              placeholder="••••••••"
+            />
+          </div>
+
+          <button
+            type="submit"
+            className="mt-2 w-full rounded-lg bg-indigo-500 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+          >
+            Sign in
+          </button>
+        </form>
+
+        <p className="mt-6 text-center text-xs text-slate-500">
+          Don&apos;t have an account yet?{" "}
+          <span className="text-slate-300">
+            (We&apos;ll add sign-up later.)
+          </span>
+        </p>
+
+        <div className="mt-6 text-center">
+          <Link
+            href="/dashboard"
+            className="text-xs text-slate-400 hover:text-slate-200 underline"
+          >
+            Skip for now – go to dashboard
+          </Link>
+        </div>
+      </div>
+    </div>
+  );
+}
