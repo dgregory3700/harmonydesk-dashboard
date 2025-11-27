@@ -1,6 +1,16 @@
 "use client";
 
 import { useRouter } from "next/navigation";
+import Link from "next/link";
+// (make sure this import exists at the top)
+
+{/* Add near the right side controls */}
+<Link
+  href="/login"
+  className="text-xs font-medium text-slate-300 hover:text-white border border-slate-700 rounded-full px-3 py-1"
+>
+  Log out
+</Link>
 
 export function Topbar() {
   const router = useRouter();
