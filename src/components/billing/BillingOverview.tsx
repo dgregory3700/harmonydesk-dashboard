@@ -1,35 +1,107 @@
-// src/components/billing/BillingOverview.tsx
+"use client";
+
+import { useState, FormEvent, ChangeEvent } from "react";
+
+type InvoiceStatus = "Draft" | "Sent" | "For county report";
+
+type Invoice = {
+  id: string;
+  caseNumber: string;
+  matter: string;
+  contact: string;
+  hours: number;
+  rate: number;
+  status: InvoiceStatus;
+  due: string;
+};
+
+const initialInvoices: Invoice[] = [
+  {
+    id: "1",
+    caseNumber: "23-1045",
+    matter: "Smith vs. Turner",
+    contact: "Attorney Reed",
+    hours: 3.5,
+    rate: 250,
+    status: "Draft",
+    due: "Due in 5 days",
+  },
+  {
+    id: "2",
+    caseNumber: "23-1189",
+    matter: "Johnson / Lee",
+    contact: "Defendant (pro se)",
+    hours: 2,
+    rate: 200,
+    status: "Sent",
+    due: "Awaiting payment",
+  },
+  {
+    id: "3",
+    caseNumber: "23-0933",
+    matter: "Anderson / Rivera",
+    contact: "County voucher",
+    hours: 4,
+    rate: 0,
+    status: "For county report",
+    due: "Included in month-end",
+  },
+];
 
 export function BillingOverview() {
-  const invoices = [
-    {
-      caseNumber: "23-1045",
-      matter: "Smith vs. Turner",
-      contact: "Attorney Reed",
-      hours: 3.5,
-      rate: 250,
+  const [invoices, setInvoices] = useState<Invoice[]>(initialInvoices);
+  const [showForm, setShowForm] = useState(false);
+  const [form, setForm] = useState({
+    caseNumber: "",
+    matter: "",
+    contact: "",
+    hours: "",
+    rate: "",
+  });
+
+  const totalDraftAmount = invoices
+    .filter((inv) => inv.status === "Draft")
+    .reduce((sum, inv) => sum + inv.hours * inv.rate, 0);
+
+  function handleInputChange(
+    e: ChangeEvent<HTMLInputElement>
+  ) {
+    const { name, value } = e.target;
+    setForm((prev) => ({ ...prev, [name]: value }));
+  }
+
+  function handleSubmit(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+
+    const hours = parseFloat(form.hours || "0");
+    const rate = parseFloat(form.rate || "0");
+
+    if (!form.caseNumber.trim() || !form.matter.trim()) {
+      // minimum sanity check
+      return;
+    }
+
+    const newInvoice: Invoice = {
+      id: Date.now().toString(),
+      caseNumber: form.caseNumber.trim(),
+      matter: form.matter.trim(),
+      contact: form.contact.trim() || "Unspecified",
+      hours: isNaN(hours) ? 0 : hours,
+      rate: isNaN(rate) ? 0 : rate,
       status: "Draft",
-      due: "Due in 5 days",
-    },
-    {
-      caseNumber: "23-1189",
-      matter: "Johnson / Lee",
-      contact: "Defendant (pro se)",
-      hours: 2,
-      rate: 200,
-      status: "Sent",
-      due: "Awaiting payment",
-    },
-    {
-      caseNumber: "23-0933",
-      matter: "Anderson / Rivera",
-      contact: "County voucher",
-      hours: 4,
-      rate: 0,
-      status: "For county report",
-      due: "Included in month-end",
-    },
-  ];
+      due: "Draft – set due date",
+    };
+
+    setInvoices((prev) => [newInvoice, ...prev]);
+    setForm({
+      caseNumber: "",
+      matter: "",
+      contact: "",
+      hours: "",
+      rate: "",
+    });
+    setShowForm(false);
+  }
 
   return (
     <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4">
@@ -41,11 +113,130 @@ export function BillingOverview() {
           <p className="text-[11px] text-slate-500">
             Track billable hours, who is paying, and what still needs to be sent.
           </p>
+          <p className="mt-1 text-[11px] text-slate-400">
+            Draft amount:{" "}
+            <span className="text-slate-100">
+              ${totalDraftAmount.toLocaleString()}
+            </span>
+          </p>
         </div>
-        <button className="text-[11px] rounded-full border border-slate-700 px-3 py-1 text-slate-200 hover:bg-slate-900">
-          New invoice
+
+        <button
+          type="button"
+          onClick={() => setShowForm((v) => !v)}
+          className="text-[11px] rounded-full border border-slate-700 px-3 py-1 text-slate-200 hover:bg-slate-900"
+        >
+          {showForm ? "Cancel" : "New invoice"}
         </button>
       </div>
+
+      {showForm && (
+        <form
+          onSubmit={handleSubmit}
+          className="mb-4 rounded-xl border border-slate-800 bg-slate-950 px-3 py-3 space-y-2 text-xs"
+        >
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+            <div>
+              <label className="block text-[11px] text-slate-300">
+                Case number
+              </label>
+              <input
+                name="caseNumber"
+                value={form.caseNumber}
+                onChange={handleInputChange}
+                required
+                className="mt-1 w-full rounded-md border border-slate-700 bg-slate-900 px-2 py-1 text-xs text-slate-50 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                placeholder="e.g. 23-1045"
+              />
+            </div>
+            <div>
+              <label className="block text-[11px] text-slate-300">
+                Matter
+              </label>
+              <input
+                name="matter"
+                value={form.matter}
+                onChange={handleInputChange}
+                required
+                className="mt-1 w-full rounded-md border border-slate-700 bg-slate-900 px-2 py-1 text-xs text-slate-50 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                placeholder="Smith vs. Turner"
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+            <div className="md:col-span-2">
+              <label className="block text-[11px] text-slate-300">
+                Bill to / contact
+              </label>
+              <input
+                name="contact"
+                value={form.contact}
+                onChange={handleInputChange}
+                className="mt-1 w-full rounded-md border border-slate-700 bg-slate-900 px-2 py-1 text-xs text-slate-50 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                placeholder="Attorney, party, or county"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="block text-[11px] text-slate-300">
+                  Hours
+                </label>
+                <input
+                  name="hours"
+                  type="number"
+                  step="0.1"
+                  min="0"
+                  value={form.hours}
+                  onChange={handleInputChange}
+                  className="mt-1 w-full rounded-md border border-slate-700 bg-slate-900 px-2 py-1 text-xs text-slate-50 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                  placeholder="3.5"
+                />
+              </div>
+              <div>
+                <label className="block text-[11px] text-slate-300">
+                  Rate ($/hr)
+                </label>
+                <input
+                  name="rate"
+                  type="number"
+                  step="1"
+                  min="0"
+                  value={form.rate}
+                  onChange={handleInputChange}
+                  className="mt-1 w-full rounded-md border border-slate-700 bg-slate-900 px-2 py-1 text-xs text-slate-50 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                  placeholder="250"
+                />
+              </div>
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-2 pt-1">
+            <button
+              type="button"
+              onClick={() => {
+                setShowForm(false);
+                setForm({
+                  caseNumber: "",
+                  matter: "",
+                  contact: "",
+                  hours: "",
+                  rate: "",
+                });
+              }}
+              className="text-[11px] rounded-full border border-slate-700 px-3 py-1 text-slate-300 hover:bg-slate-900"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              className="text-[11px] rounded-full bg-indigo-500 px-4 py-1 font-medium text-white hover:bg-indigo-400"
+            >
+              Save invoice
+            </button>
+          </div>
+        </form>
+      )}
 
       <div className="space-y-2">
         {invoices.map((inv) => {
@@ -53,7 +244,7 @@ export function BillingOverview() {
 
           return (
             <div
-              key={inv.caseNumber}
+              key={inv.id}
               className="rounded-xl border border-slate-800/70 bg-slate-900 px-3 py-2 flex items-start justify-between gap-3"
             >
               <div>
@@ -83,3 +274,4 @@ export function BillingOverview() {
     </div>
   );
 }
+
