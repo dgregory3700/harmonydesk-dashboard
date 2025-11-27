@@ -1,7 +1,25 @@
-// src/app/login/page.tsx
+"use client";
+
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { FormEvent } from "react";
+import { auth } from "@/lib/auth";
 
 export default function LoginPage() {
+  const router = useRouter();
+
+  function handleSubmit(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    // For now, any email/password is "valid"
+    auth.logIn();
+    router.push("/dashboard");
+  }
+
+  function handleSkip() {
+    auth.logIn();
+    router.push("/dashboard");
+  }
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-slate-950">
       <div className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-2xl p-8 shadow-lg">
@@ -14,9 +32,8 @@ export default function LoginPage() {
           </p>
         </div>
 
-        {/* Sign-in form (no real auth yet – Phase 1 is UI only) */}
-        <form className="space-y-4">
-
+        {/* Sign-in form (Phase 1: fake auth, but real flow) */}
+        <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label
               htmlFor="email"
@@ -72,12 +89,19 @@ export default function LoginPage() {
           </span>
         </p>
 
-        <div className="mt-6 text-center">
-          <Link
-            href="/dashboard"
+        <div className="mt-6 text-center flex flex-col gap-2">
+          <button
+            type="button"
+            onClick={handleSkip}
             className="text-xs text-slate-400 hover:text-slate-200 underline"
           >
             Skip for now – go to dashboard
+          </button>
+          <Link
+            href="/"
+            className="text-[11px] text-slate-500 hover:text-slate-300"
+          >
+            Back to home
           </Link>
         </div>
       </div>
