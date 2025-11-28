@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, FormEvent, ChangeEvent } from "react";
+import jsPDF from "jspdf";
 
 type InvoiceStatus = "Draft" | "Sent" | "For county report";
 
@@ -77,6 +78,7 @@ export function BillingOverview() {
     0
   );
 
+  // KING COUNTY — CSV EXPORT
   function handleDownloadKingCountyCsv() {
     if (countyReportInvoices.length === 0) return;
 
@@ -120,46 +122,73 @@ export function BillingOverview() {
     URL.revokeObjectURL(url);
   }
 
-  function handleDownloadPierceCountyCsv() {
+  // PIERCE COUNTY — PDF EXPORT
+  function handleDownloadPierceCountyPdf() {
     if (countyReportInvoices.length === 0) return;
 
-    // Same data, different column order for Pierce County
-    const header = [
-      "Case Number",
-      "Matter",
-      "Hours",
-      "Total",
-      "Bill To",
-    ];
+    const doc = new jsPDF();
 
-    const rows = countyReportInvoices.map((inv) => [
-      inv.caseNumber,
-      inv.matter,
-      inv.hours.toString(),
-      (inv.hours * inv.rate).toString(),
-      inv.contact,
-    ]);
+    // Title + summary
+    doc.setFontSize(12);
+    doc.text(
+      "Pierce County District Court - Month End Report",
+      10,
+      12
+    );
 
-    const csvContent = [header, ...rows]
-      .map((row) =>
-        row
-          .map((field) => `"${String(field).replace(/"/g, '""')}"`)
-          .join(",")
-      )
-      .join("\r\n");
+    doc.setFontSize(10);
+    doc.text(`Total cases: ${totalCountyCases}`, 10, 20);
+    doc.text(`Total hours: ${totalCountyHours}`, 10, 26);
+    doc.text(
+      `Total amount: $${totalCountyAmount.toLocaleString()}`,
+      10,
+      32
+    );
 
-    const blob = new Blob([csvContent], {
-      type: "text/csv;charset=utf-8;",
+    // Table header
+    let y = 42;
+    doc.setFontSize(9);
+    doc.text("Case #", 10, y);
+    doc.text("Matter", 35, y);
+    doc.text("Hours", 120, y);
+    doc.text("Total", 145, y);
+    doc.text("Bill To", 170, y);
+    y += 6;
+
+    // Rows
+    countyReportInvoices.forEach((inv) => {
+      if (y > 280) {
+        doc.addPage();
+        y = 20;
+      }
+
+      const total = inv.hours * inv.rate;
+
+      doc.text(inv.caseNumber, 10, y);
+      doc.text(
+        inv.matter.length > 40
+          ? inv.matter.slice(0, 37) + "..."
+          : inv.matter,
+        35,
+        y
+      );
+      doc.text(inv.hours.toString(), 120, y, { align: "right" });
+      doc.text(`$${total.toLocaleString()}`, 145, y, {
+        align: "right",
+      });
+      doc.text(
+        inv.contact.length > 22
+          ? inv.contact.slice(0, 19) + "..."
+          : inv.contact,
+        170,
+        y,
+        { align: "right" }
+      );
+
+      y += 6;
     });
 
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.setAttribute("download", "pierce-county-report.csv");
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
+    doc.save("pierce-county-report.pdf");
   }
 
   function handleInputChange(e: ChangeEvent<HTMLInputElement>) {
@@ -403,7 +432,7 @@ export function BillingOverview() {
         })}
       </div>
 
-      {/* Single unified report preview (King-style layout) */}
+      {/* Unified report preview + export buttons */}
       {countyReportInvoices.length > 0 && (
         <div className="mt-4 rounded-xl border border-slate-800 bg-slate-950 px-3 py-3 text-xs">
           <div className="flex flex-col md:flex-row md:items-center md:justify-between mb-2 gap-2">
@@ -412,7 +441,7 @@ export function BillingOverview() {
                 County month-end report (preview)
               </p>
               <p className="text-[11px] text-slate-500">
-                King-style layout on screen. Choose export format per county.
+                King-style layout on screen. Export as CSV or court-ready PDF.
               </p>
             </div>
             <div className="text-right text-[11px] text-slate-400 space-y-1">
@@ -431,10 +460,10 @@ export function BillingOverview() {
                 </button>
                 <button
                   type="button"
-                  onClick={handleDownloadPierceCountyCsv}
+                  onClick={handleDownloadPierceCountyPdf}
                   className="inline-flex items-center rounded-full border border-slate-700 px-3 py-0.5 text-[11px] text-slate-200 hover:bg-slate-900"
                 >
-                  Pierce County CSV
+                  Pierce County PDF
                 </button>
               </div>
             </div>
