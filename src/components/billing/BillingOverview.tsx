@@ -370,6 +370,7 @@ export function BillingOverview() {
                 will be added later.
               </p>
             </div>
+            
             <div className="text-right text-[11px] text-slate-400">
               <p>Total cases: {totalCountyCases}</p>
               <p>Total hours: {totalCountyHours}</p>
@@ -377,8 +378,14 @@ export function BillingOverview() {
                 Total amount: $
                 {totalCountyAmount.toLocaleString()}
               </p>
+              <button
+                type="button"
+                onClick={handleDownloadKingCountyCsv}
+                className="mt-1 inline-flex items-center rounded-full border border-slate-700 px-3 py-0.5 text-[11px] text-slate-200 hover:bg-slate-900"
+              >
+                Download CSV
+              </button>
             </div>
-          </div>
 
           <div className="overflow-x-auto">
             <table className="min-w-full text-[11px] text-left border-t border-slate-800">
