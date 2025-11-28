@@ -257,7 +257,7 @@ export function BillingOverview() {
         </form>
       )}
 
-      <div className="space-y-2">
+            <div className="space-y-2">
         {invoices.map((inv) => {
           const amount = inv.hours * inv.rate;
 
@@ -314,8 +314,67 @@ export function BillingOverview() {
           );
         })}
       </div>
+
+      {countyReportInvoices.length > 0 && (
+        <div className="mt-4 rounded-xl border border-slate-800 bg-slate-950 px-3 py-3 text-xs">
+          <div className="flex items-center justify-between mb-2">
+            <div>
+              <p className="text-[11px] font-semibold text-slate-200">
+                King County month-end report (draft)
+              </p>
+              <p className="text-[11px] text-slate-500">
+                One line per case: hours and billable total. Export (PDF / CSV)
+                will be added later.
+              </p>
+            </div>
+            <div className="text-right text-[11px] text-slate-400">
+              <p>Total cases: {totalCountyCases}</p>
+              <p>Total hours: {totalCountyHours}</p>
+              <p>
+                Total amount: $
+                {totalCountyAmount.toLocaleString()}
+              </p>
+            </div>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="min-w-full text-[11px] text-left border-t border-slate-800">
+              <thead className="text-slate-400">
+                <tr>
+                  <th className="py-1 pr-3">Case #</th>
+                  <th className="py-1 pr-3">Matter</th>
+                  <th className="py-1 pr-3">Bill to</th>
+                  <th className="py-1 pr-3 text-right">Hours</th>
+                  <th className="py-1 pr-3 text-right">Rate</th>
+                  <th className="py-1 pr-3 text-right">Total</th>
+                </tr>
+              </thead>
+              <tbody className="text-slate-100">
+                {countyReportInvoices.map((inv) => (
+                  <tr
+                    key={`report-${inv.id}`}
+                    className="border-t border-slate-800"
+                  >
+                    <td className="py-1 pr-3">{inv.caseNumber}</td>
+                    <td className="py-1 pr-3">{inv.matter}</td>
+                    <td className="py-1 pr-3">{inv.contact}</td>
+                    <td className="py-1 pr-3 text-right">{inv.hours}</td>
+                    <td className="py-1 pr-3 text-right">
+                      ${inv.rate}
+                    </td>
+                    <td className="py-1 pr-3 text-right">
+                      {(inv.hours * inv.rate).toLocaleString()}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
+
 
 
