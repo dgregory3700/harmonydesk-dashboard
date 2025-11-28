@@ -123,6 +123,7 @@ export function BillingOverview() {
   function handleDownloadPierceCountyCsv() {
     if (countyReportInvoices.length === 0) return;
 
+    // Same data, different column order for Pierce County
     const header = [
       "Case Number",
       "Matter",
@@ -208,6 +209,7 @@ export function BillingOverview() {
 
   return (
     <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4">
+      {/* Header */}
       <div className="flex items-center justify-between mb-3">
         <div>
           <h2 className="text-sm font-semibold text-slate-100">
@@ -233,6 +235,7 @@ export function BillingOverview() {
         </button>
       </div>
 
+      {/* New invoice form */}
       {showForm && (
         <form
           onSubmit={handleSubmit}
@@ -341,6 +344,7 @@ export function BillingOverview() {
         </form>
       )}
 
+      {/* List of invoices */}
       <div className="space-y-2">
         {invoices.map((inv) => {
           const amount = inv.hours * inv.rate;
@@ -399,30 +403,40 @@ export function BillingOverview() {
         })}
       </div>
 
+      {/* Single unified report preview (King-style layout) */}
       {countyReportInvoices.length > 0 && (
         <div className="mt-4 rounded-xl border border-slate-800 bg-slate-950 px-3 py-3 text-xs">
-          <div className="flex items-center justify-between mb-2">
+          <div className="flex flex-col md:flex-row md:items-center md:justify-between mb-2 gap-2">
             <div>
               <p className="text-[11px] font-semibold text-slate-200">
-                King County month-end report (draft)
+                County month-end report (preview)
               </p>
               <p className="text-[11px] text-slate-500">
-                One line per case: hours and billable total.
+                King-style layout on screen. Choose export format per county.
               </p>
             </div>
-            <div className="text-right text-[11px] text-slate-400">
+            <div className="text-right text-[11px] text-slate-400 space-y-1">
               <p>Total cases: {totalCountyCases}</p>
               <p>Total hours: {totalCountyHours}</p>
               <p>
                 Total amount: ${totalCountyAmount.toLocaleString()}
               </p>
-              <button
-                type="button"
-                onClick={handleDownloadKingCountyCsv}
-                className="mt-1 inline-flex items-center rounded-full border border-slate-700 px-3 py-0.5 text-[11px] text-slate-200 hover:bg-slate-900"
-              >
-                Download CSV
-              </button>
+              <div className="flex flex-wrap justify-end gap-1 pt-1">
+                <button
+                  type="button"
+                  onClick={handleDownloadKingCountyCsv}
+                  className="inline-flex items-center rounded-full border border-slate-700 px-3 py-0.5 text-[11px] text-slate-200 hover:bg-slate-900"
+                >
+                  King County CSV
+                </button>
+                <button
+                  type="button"
+                  onClick={handleDownloadPierceCountyCsv}
+                  className="inline-flex items-center rounded-full border border-slate-700 px-3 py-0.5 text-[11px] text-slate-200 hover:bg-slate-900"
+                >
+                  Pierce County CSV
+                </button>
+              </div>
             </div>
           </div>
 
@@ -441,7 +455,7 @@ export function BillingOverview() {
               <tbody className="text-slate-100">
                 {countyReportInvoices.map((inv) => (
                   <tr
-                    key={`report-king-${inv.id}`}
+                    key={`report-${inv.id}`}
                     className="border-t border-slate-800"
                   >
                     <td className="py-1 pr-3">{inv.caseNumber}</td>
@@ -452,63 +466,6 @@ export function BillingOverview() {
                     <td className="py-1 pr-3 text-right">
                       {(inv.hours * inv.rate).toLocaleString()}
                     </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
-
-      {countyReportInvoices.length > 0 && (
-        <div className="mt-4 rounded-xl border border-slate-800 bg-slate-950 px-3 py-3 text-xs">
-          <div className="flex items-center justify-between mb-2">
-            <div>
-              <p className="text-[11px] font-semibold text-slate-200">
-                Pierce County District Court (draft)
-              </p>
-              <p className="text-[11px] text-slate-500">
-                One line per session: focus on hours and totals. Order and
-                columns tuned for their preferred layout.
-              </p>
-            </div>
-            <div className="text-right text-[11px] text-slate-400">
-              <p>Total cases: {totalCountyCases}</p>
-              <p>Total hours: {totalCountyHours}</p>
-              <button
-                type="button"
-                onClick={handleDownloadPierceCountyCsv}
-                className="mt-1 inline-flex items-center rounded-full border border-slate-700 px-3 py-0.5 text-[11px] text-slate-200 hover:bg-slate-900"
-              >
-                Download CSV
-              </button>
-            </div>
-          </div>
-
-          <div className="overflow-x-auto">
-            <table className="min-w-full text-[11px] text-left border-t border-slate-800">
-              <thead className="text-slate-400">
-                <tr>
-                  <th className="py-1 pr-3">Case #</th>
-                  <th className="py-1 pr-3">Matter</th>
-                  <th className="py-1 pr-3 text-right">Hours</th>
-                  <th className="py-1 pr-3 text-right">Total</th>
-                  <th className="py-1 pr-3">Bill to</th>
-                </tr>
-              </thead>
-              <tbody className="text-slate-100">
-                {countyReportInvoices.map((inv) => (
-                  <tr
-                    key={`report-pierce-${inv.id}`}
-                    className="border-t border-slate-800"
-                  >
-                    <td className="py-1 pr-3">{inv.caseNumber}</td>
-                    <td className="py-1 pr-3">{inv.matter}</td>
-                    <td className="py-1 pr-3 text-right">{inv.hours}</td>
-                    <td className="py-1 pr-3 text-right">
-                      {(inv.hours * inv.rate).toLocaleString()}
-                    </td>
-                    <td className="py-1 pr-3">{inv.contact}</td>
                   </tr>
                 ))}
               </tbody>
