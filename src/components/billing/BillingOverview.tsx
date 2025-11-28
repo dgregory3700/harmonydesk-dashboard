@@ -120,6 +120,47 @@ export function BillingOverview() {
     URL.revokeObjectURL(url);
   }
 
+  function handleDownloadPierceCountyCsv() {
+    if (countyReportInvoices.length === 0) return;
+
+    const header = [
+      "Case Number",
+      "Matter",
+      "Hours",
+      "Total",
+      "Bill To",
+    ];
+
+    const rows = countyReportInvoices.map((inv) => [
+      inv.caseNumber,
+      inv.matter,
+      inv.hours.toString(),
+      (inv.hours * inv.rate).toString(),
+      inv.contact,
+    ]);
+
+    const csvContent = [header, ...rows]
+      .map((row) =>
+        row
+          .map((field) => `"${String(field).replace(/"/g, '""')}"`)
+          .join(",")
+      )
+      .join("\r\n");
+
+    const blob = new Blob([csvContent], {
+      type: "text/csv;charset=utf-8;",
+    });
+
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.setAttribute("download", "pierce-county-report.csv");
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  }
+
   function handleInputChange(e: ChangeEvent<HTMLInputElement>) {
     const { name, value } = e.target;
     setForm((prev) => ({ ...prev, [name]: value }));
@@ -400,7 +441,7 @@ export function BillingOverview() {
               <tbody className="text-slate-100">
                 {countyReportInvoices.map((inv) => (
                   <tr
-                    key={`report-${inv.id}`}
+                    key={`report-king-${inv.id}`}
                     className="border-t border-slate-800"
                   >
                     <td className="py-1 pr-3">{inv.caseNumber}</td>
@@ -411,6 +452,63 @@ export function BillingOverview() {
                     <td className="py-1 pr-3 text-right">
                       {(inv.hours * inv.rate).toLocaleString()}
                     </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {countyReportInvoices.length > 0 && (
+        <div className="mt-4 rounded-xl border border-slate-800 bg-slate-950 px-3 py-3 text-xs">
+          <div className="flex items-center justify-between mb-2">
+            <div>
+              <p className="text-[11px] font-semibold text-slate-200">
+                Pierce County District Court (draft)
+              </p>
+              <p className="text-[11px] text-slate-500">
+                One line per session: focus on hours and totals. Order and
+                columns tuned for their preferred layout.
+              </p>
+            </div>
+            <div className="text-right text-[11px] text-slate-400">
+              <p>Total cases: {totalCountyCases}</p>
+              <p>Total hours: {totalCountyHours}</p>
+              <button
+                type="button"
+                onClick={handleDownloadPierceCountyCsv}
+                className="mt-1 inline-flex items-center rounded-full border border-slate-700 px-3 py-0.5 text-[11px] text-slate-200 hover:bg-slate-900"
+              >
+                Download CSV
+              </button>
+            </div>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="min-w-full text-[11px] text-left border-t border-slate-800">
+              <thead className="text-slate-400">
+                <tr>
+                  <th className="py-1 pr-3">Case #</th>
+                  <th className="py-1 pr-3">Matter</th>
+                  <th className="py-1 pr-3 text-right">Hours</th>
+                  <th className="py-1 pr-3 text-right">Total</th>
+                  <th className="py-1 pr-3">Bill to</th>
+                </tr>
+              </thead>
+              <tbody className="text-slate-100">
+                {countyReportInvoices.map((inv) => (
+                  <tr
+                    key={`report-pierce-${inv.id}`}
+                    className="border-t border-slate-800"
+                  >
+                    <td className="py-1 pr-3">{inv.caseNumber}</td>
+                    <td className="py-1 pr-3">{inv.matter}</td>
+                    <td className="py-1 pr-3 text-right">{inv.hours}</td>
+                    <td className="py-1 pr-3 text-right">
+                      {(inv.hours * inv.rate).toLocaleString()}
+                    </td>
+                    <td className="py-1 pr-3">{inv.contact}</td>
                   </tr>
                 ))}
               </tbody>
