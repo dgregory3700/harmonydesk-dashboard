@@ -63,6 +63,20 @@ export function BillingOverview() {
     .filter((inv) => inv.status === "Draft")
     .reduce((sum, inv) => sum + inv.hours * inv.rate, 0);
 
+    const countyReportInvoices = invoices.filter(
+    (inv) => inv.status === "For county report"
+  );
+
+  const totalCountyCases = countyReportInvoices.length;
+  const totalCountyHours = countyReportInvoices.reduce(
+    (sum, inv) => sum + inv.hours,
+    0
+  );
+  const totalCountyAmount = countyReportInvoices.reduce(
+    (sum, inv) => sum + inv.hours * inv.rate,
+    0
+  );
+
   function handleInputChange(e: ChangeEvent<HTMLInputElement>) {
     const { name, value } = e.target;
     setForm((prev) => ({ ...prev, [name]: value }));
