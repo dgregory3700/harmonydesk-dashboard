@@ -63,7 +63,7 @@ export function BillingOverview() {
     .filter((inv) => inv.status === "Draft")
     .reduce((sum, inv) => sum + inv.hours * inv.rate, 0);
 
-    const countyReportInvoices = invoices.filter(
+  const countyReportInvoices = invoices.filter(
     (inv) => inv.status === "For county report"
   );
 
@@ -76,7 +76,8 @@ export function BillingOverview() {
     (sum, inv) => sum + inv.hours * inv.rate,
     0
   );
-    function handleDownloadKingCountyCsv() {
+
+  function handleDownloadKingCountyCsv() {
     if (countyReportInvoices.length === 0) return;
 
     const header = [
@@ -118,7 +119,6 @@ export function BillingOverview() {
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
   }
-
 
   function handleInputChange(e: ChangeEvent<HTMLInputElement>) {
     const { name, value } = e.target;
@@ -300,7 +300,7 @@ export function BillingOverview() {
         </form>
       )}
 
-            <div className="space-y-2">
+      <div className="space-y-2">
         {invoices.map((inv) => {
           const amount = inv.hours * inv.rate;
 
@@ -366,17 +366,14 @@ export function BillingOverview() {
                 King County month-end report (draft)
               </p>
               <p className="text-[11px] text-slate-500">
-                One line per case: hours and billable total. Export (PDF / CSV)
-                will be added later.
+                One line per case: hours and billable total.
               </p>
             </div>
-            
             <div className="text-right text-[11px] text-slate-400">
               <p>Total cases: {totalCountyCases}</p>
               <p>Total hours: {totalCountyHours}</p>
               <p>
-                Total amount: $
-                {totalCountyAmount.toLocaleString()}
+                Total amount: ${totalCountyAmount.toLocaleString()}
               </p>
               <button
                 type="button"
@@ -386,6 +383,7 @@ export function BillingOverview() {
                 Download CSV
               </button>
             </div>
+          </div>
 
           <div className="overflow-x-auto">
             <table className="min-w-full text-[11px] text-left border-t border-slate-800">
@@ -409,9 +407,7 @@ export function BillingOverview() {
                     <td className="py-1 pr-3">{inv.matter}</td>
                     <td className="py-1 pr-3">{inv.contact}</td>
                     <td className="py-1 pr-3 text-right">{inv.hours}</td>
-                    <td className="py-1 pr-3 text-right">
-                      ${inv.rate}
-                    </td>
+                    <td className="py-1 pr-3 text-right">${inv.rate}</td>
                     <td className="py-1 pr-3 text-right">
                       {(inv.hours * inv.rate).toLocaleString()}
                     </td>
@@ -425,6 +421,3 @@ export function BillingOverview() {
     </div>
   );
 }
-
-
-
