@@ -124,72 +124,82 @@ export function BillingOverview() {
 
   // PIERCE COUNTY — PDF EXPORT
   function handleDownloadPierceCountyPdf() {
-    if (countyReportInvoices.length === 0) return;
+  if (countyReportInvoices.length === 0) return;
 
-    const doc = new jsPDF();
+  // Landscape PDF so we get more horizontal space
+  const doc = new jsPDF("landscape", "mm", "letter");
 
-    // Title + summary
-    doc.setFontSize(12);
-    doc.text(
-      "Pierce County District Court - Month End Report",
-      10,
-      12
-    );
+  // Title + summary
+  doc.setFontSize(14);
+  doc.text(
+    "Pierce County District Court - Month End Report",
+    20,
+    20
+  );
 
-    doc.setFontSize(10);
-    doc.text(`Total cases: ${totalCountyCases}`, 10, 20);
-    doc.text(`Total hours: ${totalCountyHours}`, 10, 26);
-    doc.text(
-      `Total amount: $${totalCountyAmount.toLocaleString()}`,
-      10,
-      32
-    );
+  doc.setFontSize(11);
+  doc.text(`Total cases: ${totalCountyCases}`, 20, 30);
+  doc.text(`Total hours: ${totalCountyHours}`, 20, 36);
+  doc.text(
+    `Total amount: $${totalCountyAmount.toLocaleString()}`,
+    20,
+    42
+  );
 
-    // Table header
-    let y = 42;
-    doc.setFontSize(9);
-    doc.text("Case #", 10, y);
-    doc.text("Matter", 35, y);
-    doc.text("Hours", 120, y);
-    doc.text("Total", 145, y);
-    doc.text("Bill To", 170, y);
-    y += 6;
+  // Column positions (landscape, more room)
+  const headerY = 55;
+  const rowHeight = 6;
 
-    // Rows
-    countyReportInvoices.forEach((inv) => {
-      if (y > 280) {
-        doc.addPage();
-        y = 20;
-      }
+  const colCase = 20;
+  const colMatter = 60;
+  const colHours = 150;
+  const colTotal = 180;
+  const colBillTo = 210;
 
-      const total = inv.hours * inv.rate;
+  // Header row
+  doc.setFontSize(10);
+  doc.setFont("helvetica", "bold");
+  doc.text("Case #", colCase, headerY);
+  doc.text("Matter", colMatter, headerY);
+  doc.text("Hours", colHours, headerY, { align: "right" });
+  doc.text("Total", colTotal, headerY, { align: "right" });
+  doc.text("Bill To", colBillTo, headerY);
 
-      doc.text(inv.caseNumber, 10, y);
-      doc.text(
-        inv.matter.length > 40
-          ? inv.matter.slice(0, 37) + "..."
-          : inv.matter,
-        35,
-        y
-      );
-      doc.text(inv.hours.toString(), 120, y, { align: "right" });
-      doc.text(`$${total.toLocaleString()}`, 145, y, {
-        align: "right",
-      });
-      doc.text(
-        inv.contact.length > 22
-          ? inv.contact.slice(0, 19) + "..."
-          : inv.contact,
-        170,
-        y,
-        { align: "right" }
-      );
+  // Data rows
+  doc.setFont("helvetica", "normal");
+  let y = headerY + rowHeight;
 
-      y += 6;
+  countyReportInvoices.forEach((inv) => {
+    // Start a new page if we're too close to the bottom
+    if (y > 190) {
+      doc.addPage();
+      y = 20;
+    }
+
+    const total = inv.hours * inv.rate;
+
+    // Shorten long text so columns don't overlap
+    const matterText =
+      inv.matter.length > 50 ? inv.matter.slice(0, 47) + "..." : inv.matter;
+
+    const contactText =
+      inv.contact.length > 40 ? inv.contact.slice(0, 37) + "..." : inv.contact;
+
+    doc.text(inv.caseNumber, colCase, y);
+    doc.text(matterText, colMatter, y);
+
+    doc.text(inv.hours.toString(), colHours, y, { align: "right" });
+    doc.text(`$${total.toLocaleString()}`, colTotal, y, {
+      align: "right",
     });
 
-    doc.save("pierce-county-report.pdf");
-  }
+    doc.text(contactText, colBillTo, y);
+
+    y += rowHeight;
+  });
+
+  doc.save("pierce-county-report.pdf");
+}
 
   function handleInputChange(e: ChangeEvent<HTMLInputElement>) {
     const { name, value } = e.target;
