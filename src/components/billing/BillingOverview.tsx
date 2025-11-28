@@ -76,6 +76,49 @@ export function BillingOverview() {
     (sum, inv) => sum + inv.hours * inv.rate,
     0
   );
+    function handleDownloadKingCountyCsv() {
+    if (countyReportInvoices.length === 0) return;
+
+    const header = [
+      "Case Number",
+      "Matter",
+      "Bill To",
+      "Hours",
+      "Rate",
+      "Total",
+    ];
+
+    const rows = countyReportInvoices.map((inv) => [
+      inv.caseNumber,
+      inv.matter,
+      inv.contact,
+      inv.hours.toString(),
+      inv.rate.toString(),
+      (inv.hours * inv.rate).toString(),
+    ]);
+
+    const csvContent = [header, ...rows]
+      .map((row) =>
+        row
+          .map((field) => `"${String(field).replace(/"/g, '""')}"`)
+          .join(",")
+      )
+      .join("\r\n");
+
+    const blob = new Blob([csvContent], {
+      type: "text/csv;charset=utf-8;",
+    });
+
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.setAttribute("download", "king-county-report.csv");
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  }
+
 
   function handleInputChange(e: ChangeEvent<HTMLInputElement>) {
     const { name, value } = e.target;
