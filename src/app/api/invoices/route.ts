@@ -31,7 +31,13 @@ async function getUserEmail() {
     cookieStore.get("userEmail") ||
     cookieStore.get("email");
 
-  return candidate?.value || null;
+  // If we find a cookie, use it
+  if (candidate?.value) {
+    return candidate.value;
+  }
+
+  // Fallback: single-mediator dev account
+  return "dev-mediator@harmonydesk.local";
 }
 
 // Initial sample invoices (used for first-time seeding per user)
@@ -81,10 +87,7 @@ function mapRowToInvoice(row: any): Invoice {
 export async function GET(_req: NextRequest) {
   try {
     const userEmail = await getUserEmail();
-    if (!userEmail) {
-      return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
-    }
-
+  
     let { data, error } = await supabaseAdmin
       .from("invoices")
       .select("*")
@@ -139,10 +142,7 @@ export async function GET(_req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const userEmail = await getUserEmail();
-    if (!userEmail) {
-      return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
-    }
-
+    
     const body = await req.json();
 
     const caseNumber = String(body.caseNumber ?? "").trim();
