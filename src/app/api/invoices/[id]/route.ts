@@ -34,6 +34,7 @@ async function getUserEmail() {
     return candidate.value;
   }
 
+  // fallback single dev mediator
   return "dev-mediator@harmonydesk.local";
 }
 
@@ -52,12 +53,14 @@ function mapRowToInvoice(row: any): Invoice {
 
 export async function PATCH(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  context: { params: Promise<{ id: string }> }
 ) {
   try {
+    // 👇 NEW: await the params object
+    const { id } = await context.params;
+
     const userEmail = await getUserEmail();
-    
-    const { id } = params;
+
     const body = await req.json();
 
     const update: Record<string, any> = {};
@@ -84,6 +87,8 @@ export async function PATCH(
         { status: 400 }
       );
     }
+
+    console.log("PATCH /api/invoices/[id]", { id, userEmail, update });
 
     const { data, error } = await supabaseAdmin
       .from("invoices")
