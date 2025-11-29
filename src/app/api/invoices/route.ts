@@ -18,7 +18,20 @@ type Invoice = {
 // NOTE: cookies() is async in recent Next.js
 async function getUserEmail() {
   const cookieStore = await cookies();
-  return cookieStore.get("hd_user_email")?.value || null;
+
+  // Debug: log everything we see
+  const all = cookieStore.getAll();
+  console.log("cookies seen in /api/invoices:", all);
+
+  // Try several possible cookie names
+  const candidate =
+    cookieStore.get("hd_user_email") ||
+    cookieStore.get("hd-user-email") ||
+    cookieStore.get("user_email") ||
+    cookieStore.get("userEmail") ||
+    cookieStore.get("email");
+
+  return candidate?.value || null;
 }
 
 // Initial sample invoices (used for first-time seeding per user)
