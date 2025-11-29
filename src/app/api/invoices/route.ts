@@ -15,9 +15,10 @@ type Invoice = {
   due: string;
 };
 
-function getUserEmail() {
-  const store = cookies();
-  return store.get("hd_user_email")?.value || null;
+// NOTE: cookies() is async in recent Next.js
+async function getUserEmail() {
+  const cookieStore = await cookies();
+  return cookieStore.get("hd_user_email")?.value || null;
 }
 
 // Initial sample invoices (used for first-time seeding per user)
@@ -65,103 +66,112 @@ function mapRowToInvoice(row: any): Invoice {
 }
 
 export async function GET(_req: NextRequest) {
-  const userEmail = getUserEmail();
-  if (!userEmail) {
-    return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
-  }
+  try {
+    const userEmail = await getUserEmail();
+    if (!userEmail) {
+      return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+    }
 
-  // Fetch invoices for this user
-  let { data, error } = await supabaseAdmin
-    .from("invoices")
-    .select("*")
-    .eq("user_email", userEmail)
-    .order("created_at", { ascending: false });
-
-  if (error) {
-    console.error("Supabase GET error:", error);
-    return NextResponse.json(
-      { error: "Failed to load invoices" },
-      { status: 500 }
-    );
-  }
-
-  // If this user has no invoices yet, seed them with the sample 3
-  if (!data || data.length === 0) {
-    const toInsert = seedInvoices.map((inv) => ({
-      user_email: userEmail,
-      case_number: inv.caseNumber,
-      matter: inv.matter,
-      contact: inv.contact,
-      hours: inv.hours,
-      rate: inv.rate,
-      status: inv.status,
-      due: inv.due,
-    }));
-
-    const { data: seeded, error: seedError } = await supabaseAdmin
+    let { data, error } = await supabaseAdmin
       .from("invoices")
-      .insert(toInsert)
-      .select("*");
+      .select("*")
+      .eq("user_email", userEmail)
+      .order("created_at", { ascending: false });
 
-    if (seedError) {
-      console.error("Supabase seed error:", seedError);
+    if (error) {
+      console.error("Supabase GET error:", error);
       return NextResponse.json(
-        { error: "Failed to seed invoices" },
+        { error: "Failed to load invoices" },
         { status: 500 }
       );
     }
 
-    data = seeded ?? [];
-  }
+    // If this user has no invoices yet, seed them with the sample 3
+    if (!data || data.length === 0) {
+      const toInsert = seedInvoices.map((inv) => ({
+        user_email: userEmail,
+        case_number: inv.caseNumber,
+        matter: inv.matter,
+        contact: inv.contact,
+        hours: inv.hours,
+        rate: inv.rate,
+        status: inv.status,
+        due: inv.due,
+      }));
 
-  const invoices = (data ?? []).map(mapRowToInvoice);
-  return NextResponse.json(invoices);
+      const { data: seeded, error: seedError } = await supabaseAdmin
+        .from("invoices")
+        .insert(toInsert)
+        .select("*");
+
+      if (seedError) {
+        console.error("Supabase seed error:", seedError);
+        return NextResponse.json(
+          { error: "Failed to seed invoices" },
+          { status: 500 }
+        );
+      }
+
+      data = seeded ?? [];
+    }
+
+    const invoices = (data ?? []).map(mapRowToInvoice);
+    return NextResponse.json(invoices);
+  } catch (err) {
+    console.error("Unexpected GET /api/invoices error:", err);
+    return NextResponse.json({ error: "Server error" }, { status: 500 });
+  }
 }
 
 export async function POST(req: NextRequest) {
-  const userEmail = getUserEmail();
-  if (!userEmail) {
-    return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+  try {
+    const userEmail = await getUserEmail();
+    if (!userEmail) {
+      return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+    }
+
+    const body = await req.json();
+
+    const caseNumber = String(body.caseNumber ?? "").trim();
+    const matter = String(body.matter ?? "").trim();
+    const contact = String(body.contact ?? "").trim();
+    const hours = Number.parseFloat(body.hours ?? "0");
+    const rate = Number.parseFloat(body.rate ?? "0");
+
+    if (!caseNumber || !matter || !contact) {
+      return NextResponse.json(
+        { error: "Missing required fields" },
+        { status: 400 }
+      );
+    }
+
+    const { data, error } = await supabaseAdmin
+      .from("invoices")
+      .insert({
+        user_email: userEmail,
+        case_number: caseNumber,
+        matter,
+        contact,
+        hours: Number.isNaN(hours) ? 0 : hours,
+        rate: Number.isNaN(rate) ? 0 : rate,
+        status: "Draft",
+        due: "Draft – set due date",
+      })
+      .select("*")
+      .single();
+
+    if (error || !data) {
+      console.error("Supabase POST error:", error);
+      return NextResponse.json(
+        { error: "Failed to create invoice" },
+        { status: 500 }
+      );
+    }
+
+    const invoice = mapRowToInvoice(data);
+    return NextResponse.json(invoice, { status: 201 });
+  } catch (err) {
+    console.error("Unexpected POST /api/invoices error:", err);
+    return NextResponse.json({ error: "Server error" }, { status: 500 });
   }
-
-  const body = await req.json();
-
-  const caseNumber = String(body.caseNumber ?? "").trim();
-  const matter = String(body.matter ?? "").trim();
-  const contact = String(body.contact ?? "").trim();
-  const hours = Number.parseFloat(body.hours ?? "0");
-  const rate = Number.parseFloat(body.rate ?? "0");
-
-  if (!caseNumber || !matter || !contact) {
-    return NextResponse.json(
-      { error: "Missing required fields" },
-      { status: 400 }
-    );
-  }
-
-  const { data, error } = await supabaseAdmin
-    .from("invoices")
-    .insert({
-      user_email: userEmail,
-      case_number: caseNumber,
-      matter,
-      contact,
-      hours: Number.isNaN(hours) ? 0 : hours,
-      rate: Number.isNaN(rate) ? 0 : rate,
-      status: "Draft",
-      due: "Draft – set due date",
-    })
-    .select("*")
-    .single();
-
-  if (error || !data) {
-    console.error("Supabase POST error:", error);
-    return NextResponse.json(
-      { error: "Failed to create invoice" },
-      { status: 500 }
-    );
-  }
-
-  const invoice = mapRowToInvoice(data);
-  return NextResponse.json(invoice, { status: 201 });
 }
