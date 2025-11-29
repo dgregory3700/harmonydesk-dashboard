@@ -1,6 +1,6 @@
 import { RequireAuth } from "@/components/auth/RequireAuth";
 import { DashboardGreeting } from "@/components/dashboard/DashboardGreeting";
-import { BillingOverview } from "@/components/billing/BillingOverview";
+import  BillingOverview  from "@/components/billing/BillingOverview";
 import { CourtReportsPanel } from "@/components/billing/CourtReportsPanel";
 
 export default function BillingPage() {
