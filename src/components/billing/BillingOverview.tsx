@@ -318,7 +318,7 @@ export default function BillingOverview() {
                 Case number
               </label>
               <input
-                className="w-full rounded-md border px-2 py-1 text-sm"
+                className="w-full rounded-md border bg-white text-slate-900 px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 value={newInvoice.caseNumber}
                 onChange={(e) =>
                   handleFormChange("caseNumber", e.target.value)
