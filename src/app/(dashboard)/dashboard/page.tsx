@@ -21,10 +21,10 @@ export default function DashboardPage() {
           {stats.map((s) => (
             <div
               key={s.label}
-              className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4"
+              className="rounded-2xl border border-slate-200 bg-white px-6 py-4 shadow-sm"
             >
-              <p className="text-xs text-slate-400">{s.label}</p>
-              <p className="mt-2 text-xl font-semibold text-slate-50">
+              <p className="text-xs text-slate-600">{s.label}</p>
+              <p className="mt-2 text-2xl font-semibold text-slate-900">
                 {s.value}
               </p>
             </div>
@@ -40,6 +40,3 @@ export default function DashboardPage() {
     </RequireAuth>
   );
 }
-
-
-
