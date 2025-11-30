@@ -2,8 +2,8 @@ import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 
 // Read the same cookie your fake auth uses (hd_user_email)
-function getUserEmail(): string {
-  const cookieStore = cookies();
+async function getUserEmail(): Promise<string> {
+  const cookieStore = await cookies();
 
   const candidate =
     cookieStore.get("hd_user_email") ||
@@ -21,6 +21,6 @@ function getUserEmail(): string {
 }
 
 export async function GET() {
-  const email = getUserEmail();
+  const email = await getUserEmail();
   return NextResponse.json({ email });
 }
