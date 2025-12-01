@@ -4,32 +4,24 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { auth } from "@/lib/auth";
 
-export function Topbar() {
+export default function Topbar() {
   const router = useRouter();
   const [email, setEmail] = useState<string | null>(null);
 
   useEffect(() => {
-    let cancelled = false;
-
-    async function loadEmail() {
-      try {
-        const res = await fetch("/api/me", { cache: "no-store" });
-        if (!res.ok) return;
-
-        const data = (await res.json()) as { email?: string };
-        if (!cancelled) {
-          setEmail(data.email ?? null);
-        }
-      } catch {
-        // fail silently – we just won't show an email
+    // Use the same auth helper the rest of the app uses.
+    // It runs on the client, where it has access to cookies/localStorage.
+    try {
+      if (auth.isLoggedIn()) {
+        const userEmail = auth.getUserEmail();
+        setEmail(userEmail ?? null);
+      } else {
+        setEmail(null);
       }
+    } catch {
+      // If anything goes wrong, just don't show an email.
+      setEmail(null);
     }
-
-    loadEmail();
-
-    return () => {
-      cancelled = true;
-    };
   }, []);
 
   function handleLogout() {
