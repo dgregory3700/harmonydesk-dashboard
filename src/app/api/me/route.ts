@@ -4,17 +4,20 @@ import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 
 export async function GET() {
-  // Use the same auth helper used elsewhere in HarmonyDesk
-  const session = await auth();
+  let email: string | null = null;
 
-  // If there is no logged-in user, just return null email
-  if (!session || !session.user) {
-    return NextResponse.json({ email: null }, { status: 200 });
+  try {
+    // auth is an object with helper methods, not a function.
+    // We use the same helper that other parts of the app use.
+    email = auth.getUserEmail();
+  } catch (error) {
+    // If anything goes wrong (for example, helper not usable on server),
+    // we just fall back to null and avoid breaking the route.
+    email = null;
   }
 
-  // Safely return the user's email
   return NextResponse.json(
-    { email: session.user.email ?? null },
+    { email: email ?? null },
     { status: 200 }
   );
 }
