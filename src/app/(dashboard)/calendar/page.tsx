@@ -1,10 +1,23 @@
 "use client";
 
 import { useState } from "react";
-import { format } from "date-fns";
 
 export default function CalendarPage() {
   const [selectedDate, setSelectedDate] = useState(new Date());
+
+  // Nicely formatted month label, e.g. "December 2025"
+  const monthLabel = selectedDate.toLocaleString("en-US", {
+    month: "long",
+    year: "numeric",
+  });
+
+  function goToMonth(offset: number) {
+    setSelectedDate((current) => {
+      const d = new Date(current);
+      d.setMonth(d.getMonth() + offset);
+      return d;
+    });
+  }
 
   return (
     <div className="space-y-6">
@@ -19,11 +32,7 @@ export default function CalendarPage() {
       <div className="flex items-center justify-between rounded-xl border bg-card p-3 shadow-sm">
         <div className="flex items-center gap-2">
           <button
-            onClick={() =>
-              setSelectedDate(
-                new Date(selectedDate.setMonth(selectedDate.getMonth() - 1))
-              )
-            }
+            onClick={() => goToMonth(-1)}
             className="rounded-md border px-3 py-1 text-sm hover:bg-accent"
           >
             Prev
@@ -37,20 +46,14 @@ export default function CalendarPage() {
           </button>
 
           <button
-            onClick={() =>
-              setSelectedDate(
-                new Date(selectedDate.setMonth(selectedDate.getMonth() + 1))
-              )
-            }
+            onClick={() => goToMonth(1)}
             className="rounded-md border px-3 py-1 text-sm hover:bg-accent"
           >
             Next
           </button>
         </div>
 
-        <p className="font-medium text-lg">
-          {format(selectedDate, "MMMM yyyy")}
-        </p>
+        <p className="text-lg font-medium">{monthLabel}</p>
 
         <button className="rounded-md bg-primary px-4 py-2 text-sm text-primary-foreground hover:opacity-90">
           + New Session
@@ -59,29 +62,32 @@ export default function CalendarPage() {
 
       {/* Placeholder calendar grid */}
       <div className="rounded-xl border bg-card p-4 shadow-sm">
-        <div className="grid grid-cols-7 text-center text-sm font-medium text-muted-foreground mb-2">
-          <div>Sun</div><div>Mon</div><div>Tue</div>
-          <div>Wed</div><div>Thu</div><div>Fri</div><div>Sat</div>
+        <div className="mb-2 grid grid-cols-7 text-center text-sm font-medium text-muted-foreground">
+          <div>Sun</div>
+          <div>Mon</div>
+          <div>Tue</div>
+          <div>Wed</div>
+          <div>Thu</div>
+          <div>Fri</div>
+          <div>Sat</div>
         </div>
 
         <div className="grid grid-cols-7 gap-1">
           {[...Array(35)].map((_, i) => (
             <div
               key={i}
-              className="
-                h-20 rounded-md border p-2 text-xs hover:bg-accent cursor-pointer
-              "
+              className="h-20 cursor-pointer rounded-md border p-2 text-xs hover:bg-accent"
             >
               <p className="font-medium">{i + 1}</p>
 
               {/* Example placeholder events */}
               {i === 2 && (
-                <div className="mt-1 rounded bg-blue-100 text-blue-800 px-1 py-0.5 text-[10px]">
+                <div className="mt-1 rounded bg-blue-100 px-1 py-0.5 text-[10px] text-blue-800">
                   Mediation 10 AM
                 </div>
               )}
               {i === 12 && (
-                <div className="mt-1 rounded bg-green-100 text-green-800 px-1 py-0.5 text-[10px]">
+                <div className="mt-1 rounded bg-green-100 px-1 py-0.5 text-[10px] text-green-800">
                   Consultation 1:30 PM
                 </div>
               )}
