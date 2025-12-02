@@ -1,54 +1,150 @@
-import { RequireAuth } from "@/components/auth/RequireAuth";
+"use client";
 
-const exampleLink = "https://harmonydesk.ai/book/tired01";
+import React, { useEffect, useState } from "react";
+
+type BookingLink = {
+  id: string;
+  label: string;
+  description: string;
+  slug: string;
+  defaultDuration: string;
+};
+
+const BOOKING_LINKS: BookingLink[] = [
+  {
+    id: "intro",
+    label: "Intro / intake call",
+    description:
+      "Short call to understand the situation, explain the process, and decide whether mediation is a good fit.",
+    slug: "intro",
+    defaultDuration: "30 min",
+  },
+  {
+    id: "full",
+    label: "Full mediation session",
+    description:
+      "Standard working session used once both parties have completed intake and signed the agreement.",
+    slug: "session",
+    defaultDuration: "90 min",
+  },
+];
 
 export default function BookingLinksPage() {
+  const [origin, setOrigin] = useState<string>("https://harmonydesk.ai");
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+
+  // Use the real origin when running in the browser (localhost or production)
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      setOrigin(window.location.origin);
+    }
+  }, []);
+
+  function fullUrl(link: BookingLink) {
+    return `${origin}/booking/${link.slug}`;
+  }
+
+  async function handleCopy(link: BookingLink) {
+    const url = fullUrl(link);
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopiedId(link.id);
+      setTimeout(() => setCopiedId(null), 1500);
+    } catch {
+      alert("Sorry, your browser would not let us copy the link automatically.");
+    }
+  }
+
   return (
-    <RequireAuth>
-      <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-semibold tracking-tight">
-              Booking links
-            </h1>
-            <p className="text-sm text-muted-foreground">
-              Share simple links so clients can book time on your calendar.
-            </p>
-          </div>
-        </div>
-
-        <div className="rounded-xl border bg-card p-4 shadow-sm space-y-4">
-          <div>
-            <h2 className="text-sm font-medium mb-1">Default booking link</h2>
-            <p className="text-xs text-muted-foreground mb-2">
-              This is the link you’ll paste into emails, your website, or text
-              messages. For now it’s just a sample URL.
-            </p>
-            <div className="flex flex-col gap-2 md:flex-row md:items-center">
-              <code className="flex-1 rounded-md border bg-background px-3 py-2 text-xs break-all">
-                {exampleLink}
-              </code>
-              <button
-                type="button"
-                className="rounded-md border px-3 py-2 text-xs font-medium hover:bg-accent"
-              >
-                Copy link (UI only)
-              </button>
-            </div>
-          </div>
-
-          <div>
-            <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-1">
-              Coming soon
-            </h3>
-            <ul className="text-xs text-muted-foreground space-y-1 list-disc ml-4">
-              <li>Different links for mediation vs. intro consults</li>
-              <li>Automatic syncing with your Google Calendar availability</li>
-              <li>Ability to embed a booking form on your website</li>
-            </ul>
-          </div>
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight">
+            Booking links
+          </h1>
+          <p className="text-sm text-muted-foreground">
+            Share simple scheduling links with clients and referral partners.
+          </p>
         </div>
       </div>
-    </RequireAuth>
+
+      {/* Links list */}
+      <div className="space-y-4 rounded-xl border bg-card p-4 shadow-sm">
+        <div className="mb-2 flex flex-col justify-between gap-2 md:flex-row md:items-center">
+          <div>
+            <h2 className="text-sm font-medium">Your active links</h2>
+            <p className="text-xs text-muted-foreground">
+              Copy and paste these anywhere: email signatures, website, or county referral
+              forms.
+            </p>
+          </div>
+        </div>
+
+        <div className="space-y-3">
+          {BOOKING_LINKS.map((link) => (
+            <div
+              key={link.id}
+              className="flex flex-col gap-3 rounded-lg border bg-background p-3 md:flex-row md:items-center md:justify-between"
+            >
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <h3 className="text-sm font-semibold text-slate-900">
+                    {link.label}
+                  </h3>
+                  <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-slate-600">
+                    {link.defaultDuration}
+                  </span>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  {link.description}
+                </p>
+                <p className="mt-1 text-xs font-mono text-sky-700 break-all">
+                  {fullUrl(link)}
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2 md:flex-col md:items-end">
+                <button
+                  type="button"
+                  onClick={() => handleCopy(link)}
+                  className="inline-flex rounded-md bg-sky-600 px-3 py-2 text-xs font-medium text-white shadow-sm hover:bg-sky-700"
+                >
+                  {copiedId === link.id ? "Copied" : "Copy link"}
+                </button>
+                <button
+                  type="button"
+                  className="inline-flex rounded-md border px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50"
+                >
+                  Preview (coming soon)
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Helper copy for your mediator / you */}
+      <div className="rounded-xl border bg-card p-4 text-sm text-slate-800 shadow-sm">
+        <h2 className="text-sm font-semibold">How to use these links</h2>
+        <ul className="mt-2 list-disc space-y-1 pl-5 text-xs text-muted-foreground">
+          <li>
+            Add the <span className="font-medium text-slate-800">Intro / intake call</span>{" "}
+            link to your website and email signature for new inquiries.
+          </li>
+          <li>
+            Once both parties are ready, send the{" "}
+            <span className="font-medium text-slate-800">
+              Full mediation session
+            </span>{" "}
+            link so they can pick a time that works.
+          </li>
+          <li>
+            Later, we can connect these to your real scheduling system (Google Calendar,
+            Calendly, or a custom HarmonyDesk calendar).
+          </li>
+        </ul>
+      </div>
+    </div>
   );
 }
