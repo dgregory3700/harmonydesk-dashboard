@@ -25,37 +25,37 @@ const navItems = [
     icon: LayoutDashboard,
   },
   {
-    href: "/dashboard/calendar",
+    href: "/calendar", // matches src/app/(dashboard)/calendar/page.tsx
     label: "Calendar",
     icon: Calendar,
   },
   {
-    href: "/dashboard/cases",
+    href: "/cases", // matches src/app/(dashboard)/cases/page.tsx
     label: "Cases",
     icon: FolderKanban,
   },
   {
-    href: "/dashboard/billing",
+    href: "/billing", // matches src/app/(dashboard)/billing/page.tsx
     label: "Billing & Courts",
     icon: FileText,
   },
   {
-    href: "/dashboard/messages",
+    href: "/messages", // matches src/app/(dashboard)/messages/page.tsx
     label: "Messages",
     icon: MessageCircle,
   },
   {
-    href: "/dashboard/booking-links",
+    href: "/booking-links", // matches src/app/(dashboard)/booking-links/page.tsx
     label: "Booking links",
     icon: Link2,
   },
   {
-    href: "/dashboard/clients",
+    href: "/clients", // matches src/app/(dashboard)/clients/page.tsx
     label: "Clients",
     icon: Users,
   },
   {
-    href: "/dashboard/settings",
+    href: "/settings", // matches src/app/(dashboard)/settings/page.tsx
     label: "Settings",
     icon: Settings,
   },
