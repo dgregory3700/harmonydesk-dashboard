@@ -156,6 +156,31 @@ export default function BillingOverview() {
     }
   }
 
+  // 🗑 NEW: delete invoice
+  async function handleDeleteInvoice(id: string) {
+    const confirmed = window.confirm(
+      "Delete this invoice? This action cannot be undone."
+    );
+    if (!confirmed) return;
+
+    try {
+      const res = await fetch(`/api/invoices/${id}`, {
+        method: "DELETE",
+      });
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || "Failed to delete invoice");
+      }
+
+      // Remove from local state so it disappears immediately
+      setInvoices((prev) => prev.filter((inv) => inv.id !== id));
+    } catch (err: any) {
+      console.error(err);
+      alert(err.message || "Could not delete invoice");
+    }
+  }
+
   function downloadKingCountyCsv() {
     if (countyInvoices.length === 0) return;
 
@@ -449,6 +474,14 @@ export default function BillingOverview() {
                       {inv.status === "Sent" && "View invoice"}
                       {inv.status === "For county report" &&
                         "View for report"}
+                    </button>
+                    {/* 🗑 Delete button */}
+                    <button
+                      type="button"
+                      className="rounded-md border border-red-200 bg-white px-3 py-1 text-xs font-medium text-red-600 hover:bg-red-50"
+                      onClick={() => handleDeleteInvoice(inv.id)}
+                    >
+                      Delete
                     </button>
                   </div>
                 </div>
