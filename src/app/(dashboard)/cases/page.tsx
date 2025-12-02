@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import Link from "next/link";
 
 type CaseStatus = "Open" | "Upcoming" | "Closed";
 
@@ -275,12 +276,12 @@ export default function CasesPage() {
                   </div>
 
                   <div className="flex gap-2">
-                    <button
-                      type="button"
+                    <Link
+                      href={`/cases/${c.id}`}
                       className="rounded-md border px-3 py-1 text-xs font-medium hover:bg-accent"
                     >
                       View case file
-                    </button>
+                    </Link>
                     <button
                       type="button"
                       className="rounded-md border px-3 py-1 text-xs font-medium hover:bg-accent"
