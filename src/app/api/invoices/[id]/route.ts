@@ -56,7 +56,7 @@ export async function PATCH(
   context: { params: Promise<{ id: string }> }
 ) {
   try {
-    // 👇 NEW: await the params object
+    // 👇 await the params object
     const { id } = await context.params;
 
     const userEmail = await getUserEmail();
@@ -110,6 +110,37 @@ export async function PATCH(
     return NextResponse.json(invoice);
   } catch (err) {
     console.error("Unexpected PATCH /api/invoices/[id] error:", err);
+    return NextResponse.json({ error: "Server error" }, { status: 500 });
+  }
+}
+
+export async function DELETE(
+  _req: NextRequest,
+  context: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { id } = await context.params;
+    const userEmail = await getUserEmail();
+
+    console.log("DELETE /api/invoices/[id]", { id, userEmail });
+
+    const { error } = await supabaseAdmin
+      .from("invoices")
+      .delete()
+      .eq("id", id)
+      .eq("user_email", userEmail);
+
+    if (error) {
+      console.error("Supabase DELETE error:", error);
+      return NextResponse.json(
+        { error: "Failed to delete invoice" },
+        { status: 500 }
+      );
+    }
+
+    return NextResponse.json({ success: true }, { status: 200 });
+  } catch (err) {
+    console.error("Unexpected DELETE /api/invoices/[id] error:", err);
     return NextResponse.json({ error: "Server error" }, { status: 500 });
   }
 }
