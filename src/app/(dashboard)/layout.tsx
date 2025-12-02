@@ -1,22 +1,54 @@
-import type { ReactNode } from "react";
-import { Sidebar } from "@/components/layout/sidebar";
-import Topbar from "@/components/layout/topbar";
+"use client";
 
-export default function DashboardLayout({
-  children,
-}: {
-  children: ReactNode;
-}) {
+import { ReactNode } from "react";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+import { cn } from "@/lib/utils";
+
+export default function DashboardLayout({ children }: { children: ReactNode }) {
+  const pathname = usePathname();
+
+  const navItems = [
+    { href: "/dashboard", label: "Overview" },
+    { href: "/calendar", label: "Calendar" },
+    { href: "/cases", label: "Cases" },
+    { href: "/billing", label: "Billing & Courts" },
+    { href: "/messages", label: "Messages" },
+    { href: "/booking-links", label: "Booking links" },
+    { href: "/clients", label: "Clients" },
+    { href: "/settings", label: "Settings" },
+  ];
+
   return (
-    <div className="min-h-screen flex bg-slate-100 text-slate-900">
-      <aside className="hidden md:flex w-64 bg-white border-r border-slate-200 shadow-sm">
-        <Sidebar />
-      </aside>
+    <div className="light bg-white min-h-screen">
+      <div className="flex h-screen">
 
-      <div className="flex-1 flex flex-col">
-        <Topbar />
+        {/* SIDEBAR */}
+        <aside className="w-60 border-r bg-white p-4 flex flex-col">
+          <h1 className="text-xl font-bold mb-6 text-blue-600">HarmonyDesk</h1>
 
-        <main className="flex-1 overflow-y-auto p-4 md:p-6 bg-slate-50">
+          <nav className="space-y-1 flex-1">
+            {navItems.map((item) => (
+              <Link
+                key={item.href}
+                href={item.href}
+                className={cn(
+                  "block px-3 py-2 rounded-md text-sm font-medium",
+                  pathname === item.href
+                    ? "bg-blue-100 text-blue-700"
+                    : "text-gray-700 hover:bg-gray-100"
+                )}
+              >
+                {item.label}
+              </Link>
+            ))}
+          </nav>
+
+          <p className="text-xs text-gray-400 mt-6">© {new Date().getFullYear()} HarmonyDesk</p>
+        </aside>
+
+        {/* MAIN CONTENT AREA */}
+        <main className="flex-1 overflow-y-auto bg-gray-50 p-8">
           {children}
         </main>
       </div>
