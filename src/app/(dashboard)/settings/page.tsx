@@ -16,6 +16,16 @@ type UserSettings = {
   darkMode: boolean;
 };
 
+const TIMEZONE_OPTIONS = [
+  { value: "America/Los_Angeles", label: "Pacific – America/Los_Angeles" },
+  { value: "America/Denver", label: "Mountain – America/Denver" },
+  { value: "America/Chicago", label: "Central – America/Chicago" },
+  { value: "America/New_York", label: "Eastern – America/New_York" },
+  { value: "America/Anchorage", label: "Alaska – America/Anchorage" },
+  { value: "Pacific/Honolulu", label: "Hawaii – Pacific/Honolulu" },
+  { value: "UTC", label: "UTC" },
+];
+
 export default function SettingsPage() {
   const [settings, setSettings] = useState<UserSettings | null>(null);
   const [loading, setLoading] = useState(true);
@@ -117,6 +127,10 @@ export default function SettingsPage() {
       </div>
     );
   }
+
+  const timezoneIsKnown = settings.timezone
+    ? TIMEZONE_OPTIONS.some((tz) => tz.value === settings.timezone)
+    : false;
 
   return (
     <div className="space-y-6">
@@ -264,15 +278,29 @@ export default function SettingsPage() {
               <label className="block text-xs font-medium text-muted-foreground">
                 Timezone
               </label>
-              <input
-                type="text"
+              <select
                 value={settings.timezone ?? ""}
                 onChange={(e) =>
                   update("timezone", e.target.value || null)
                 }
                 className="w-full rounded-md border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                placeholder="America/Los_Angeles"
-              />
+              >
+                <option value="">Select timezone…</option>
+                {TIMEZONE_OPTIONS.map((tz) => (
+                  <option key={tz.value} value={tz.value}>
+                    {tz.label}
+                  </option>
+                ))}
+                {settings.timezone &&
+                  !timezoneIsKnown && (
+                    <option value={settings.timezone}>
+                      {settings.timezone} (custom)
+                    </option>
+                  )}
+              </select>
+              <p className="text-[11px] text-muted-foreground">
+                Used for session times, calendar views, and reminders.
+              </p>
             </div>
 
             <label className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
