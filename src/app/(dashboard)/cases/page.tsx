@@ -1,101 +1,78 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 
 type CaseStatus = "Open" | "Upcoming" | "Closed";
 
 type MediationCase = {
   id: string;
-  title: string;
+  caseNumber: string;
+  matter: string;
   parties: string;
   county: string;
-  type: string;
   status: CaseStatus;
-  nextDate?: string; // ISO or plain text (e.g. "2025-12-03")
-  notes?: string;
+  nextSessionDate: string | null;
+  notes: string | null;
 };
 
-// Temporary in-memory data for the UI.
-// Later we can swap this to load from Supabase (/api/cases).
-const INITIAL_CASES: MediationCase[] = [
-  {
-    id: "HD-2025-001",
-    title: "Smith vs. Turner – parenting plan",
-    parties: "Alex Smith / Jamie Turner",
-    county: "King County",
-    type: "Family mediation",
-    status: "Upcoming",
-    nextDate: "2025-12-05",
-    notes: "Parenting plan revision; high conflict, needs extra buffer time.",
-  },
-  {
-    id: "HD-2025-002",
-    title: "Johnson vs. Lee – small claims",
-    parties: "Taylor Johnson / Morgan Lee",
-    county: "Pierce County",
-    type: "Small claims",
-    status: "Open",
-    nextDate: "2025-12-10",
-    notes: "Dispute over contractor invoice; discovery in progress.",
-  },
-  {
-    id: "HD-2025-003",
-    title: "Miller vs. Rivera – neighbor dispute",
-    parties: "Chris Miller / Ana Rivera",
-    county: "King County",
-    type: "Civil mediation",
-    status: "Closed",
-    nextDate: undefined,
-    notes: "Settled; follow-up email sent with agreement PDF.",
-  },
-  {
-    id: "HD-2025-004",
-    title: "Acme Corp vs. Vendor – contract renegotiation",
-    parties: "Acme Corp / Vendor LLC",
-    county: "Snohomish County",
-    type: "Commercial",
-    status: "Open",
-    nextDate: "2025-12-15",
-  },
-];
-
 export default function CasesPage() {
+  const [cases, setCases] = useState<MediationCase[]>([]);
   const [statusFilter, setStatusFilter] = useState<CaseStatus | "All">("All");
   const [search, setSearch] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    async function loadCases() {
+      try {
+        setLoading(true);
+        setError(null);
+
+        const res = await fetch("/api/cases");
+        if (!res.ok) {
+          throw new Error("Failed to load cases");
+        }
+
+        const data = (await res.json()) as MediationCase[];
+        setCases(data);
+      } catch (err: any) {
+        console.error("Error loading cases:", err);
+        setError(err?.message ?? "Failed to load cases");
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    loadCases();
+  }, []);
 
   const filteredCases = useMemo(() => {
-    return INITIAL_CASES.filter((c) => {
+    return cases.filter((c) => {
       const matchesStatus =
         statusFilter === "All" ? true : c.status === statusFilter;
 
       const haystack = (
-        c.id +
+        c.caseNumber +
         " " +
-        c.title +
+        c.matter +
         " " +
         c.parties +
         " " +
-        c.county +
-        " " +
-        c.type
+        c.county
       ).toLowerCase();
 
       const matchesSearch = haystack.includes(search.toLowerCase().trim());
 
       return matchesStatus && matchesSearch;
     });
-  }, [statusFilter, search]);
+  }, [cases, statusFilter, search]);
 
-  const openCount = INITIAL_CASES.filter((c) => c.status === "Open").length;
-  const upcomingCount = INITIAL_CASES.filter(
-    (c) => c.status === "Upcoming"
-  ).length;
-  const closedCount = INITIAL_CASES.filter(
-    (c) => c.status === "Closed"
-  ).length;
+  const openCount = cases.filter((c) => c.status === "Open").length;
+  const upcomingCount = cases.filter((c) => c.status === "Upcoming").length;
+  const closedCount = cases.filter((c) => c.status === "Closed").length;
 
-  function formatDate(value?: string) {
+  function formatDate(value?: string | null) {
     if (!value) return "—";
     const d = new Date(value);
     if (Number.isNaN(d.getTime())) {
@@ -120,7 +97,13 @@ export default function CasesPage() {
           </p>
         </div>
 
-        <button className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90">
+        <button
+          className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90"
+          type="button"
+          onClick={() => {
+            alert("New case creation flow coming soon.");
+          }}
+        >
           + New case
         </button>
       </div>
@@ -229,7 +212,15 @@ export default function CasesPage() {
       <div className="rounded-xl border bg-card p-4 shadow-sm">
         <h2 className="mb-3 text-sm font-medium">Case list</h2>
 
-        {filteredCases.length === 0 ? (
+        {loading ? (
+          <p className="text-sm text-muted-foreground">
+            Loading cases…
+          </p>
+        ) : error ? (
+          <p className="text-sm text-destructive">
+            {error || "Something went wrong loading cases."}
+          </p>
+        ) : filteredCases.length === 0 ? (
           <p className="text-sm text-muted-foreground">
             No cases match your filters. Try clearing the search or switching
             status tabs.
@@ -242,12 +233,12 @@ export default function CasesPage() {
                 className="flex flex-col gap-3 rounded-lg border bg-background p-3 md:flex-row md:items-center md:justify-between"
               >
                 <div className="space-y-1">
-                  <p className="text-sm font-medium">{c.title}</p>
+                  <p className="text-sm font-medium">{c.matter}</p>
                   <p className="text-xs text-muted-foreground">
-                    {c.id} • {c.parties}
+                    {c.caseNumber} • {c.parties}
                   </p>
                   <p className="text-xs text-muted-foreground">
-                    {c.county} • {c.type}
+                    {c.county}
                   </p>
                   {c.notes && (
                     <p className="text-xs text-muted-foreground line-clamp-2">
@@ -271,7 +262,7 @@ export default function CasesPage() {
                     </span>
 
                     <span className="text-muted-foreground">
-                      Next date: {formatDate(c.nextDate)}
+                      Next date: {formatDate(c.nextSessionDate)}
                     </span>
                   </div>
 
@@ -285,6 +276,11 @@ export default function CasesPage() {
                     <button
                       type="button"
                       className="rounded-md border px-3 py-1 text-xs font-medium hover:bg-accent"
+                      onClick={() =>
+                        alert(
+                          "In production this will create an invoice from this case."
+                        )
+                      }
                     >
                       Create invoice
                     </button>
