@@ -27,6 +27,14 @@ type MediationSession = {
   completed: boolean;
 };
 
+type Message = {
+  id: string;
+  caseId: string | null;
+  subject: string;
+  body: string;
+  createdAt: string;
+};
+
 function formatDate(value?: string | null) {
   if (!value) return "—";
   const d = new Date(value);
@@ -67,6 +75,11 @@ export default function CaseDetailPage() {
   const [sessions, setSessions] = useState<MediationSession[]>([]);
   const [loadingSessions, setLoadingSessions] = useState(true);
   const [sessionsError, setSessionsError] = useState<string | null>(null);
+
+  // Messages state (for this case)
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [loadingMessages, setLoadingMessages] = useState(true);
+  const [messagesError, setMessagesError] = useState<string | null>(null);
 
   // New session form
   const [newSessionDate, setNewSessionDate] = useState("");
@@ -141,6 +154,32 @@ export default function CaseDetailPage() {
     }
 
     loadSessions();
+  }, [caseId]);
+
+  useEffect(() => {
+    if (!caseId) return;
+
+    async function loadMessages() {
+      try {
+        setLoadingMessages(true);
+        setMessagesError(null);
+
+        const res = await fetch(`/api/messages?caseId=${caseId}`);
+        if (!res.ok) {
+          throw new Error("Failed to load messages");
+        }
+
+        const data = (await res.json()) as Message[];
+        setMessages(data);
+      } catch (err: any) {
+        console.error("Error loading messages for case:", err);
+        setMessagesError(err?.message ?? "Failed to load messages");
+      } finally {
+        setLoadingMessages(false);
+      }
+    }
+
+    loadMessages();
   }, [caseId]);
 
   async function handleSaveCase() {
@@ -332,7 +371,7 @@ export default function CaseDetailPage() {
 
       {/* Main layout */}
       <div className="grid gap-4 md:grid-cols-3">
-        {/* Left column: case info & notes & sessions */}
+        {/* Left column: case info & notes & sessions & messages */}
         <div className="md:col-span-2 space-y-4">
           {/* Case info */}
           <div className="rounded-xl border bg-card p-4 shadow-sm">
@@ -507,6 +546,54 @@ export default function CaseDetailPage() {
               )}
             </form>
           </div>
+
+          {/* Messages for this case */}
+          <div className="rounded-xl border bg-card p-4 shadow-sm space-y-3">
+            <div className="flex items-center justify-between">
+              <h2 className="text-sm font-medium">Messages for this case</h2>
+              <Link
+                href={`/messages/new?caseId=${caseData.id}`}
+                className="text-[11px] font-medium text-blue-600 hover:underline"
+              >
+                + New message
+              </Link>
+            </div>
+
+            {loadingMessages ? (
+              <p className="text-sm text-muted-foreground">
+                Loading messages…
+              </p>
+            ) : messagesError ? (
+              <p className="text-sm text-destructive">{messagesError}</p>
+            ) : messages.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                No messages linked to this case yet. Create one to track
+                important notes or communications.
+              </p>
+            ) : (
+              <div className="space-y-2">
+                {messages.map((m) => (
+                  <Link
+                    key={m.id}
+                    href={`/messages/${m.id}`}
+                    className="flex flex-col gap-1 rounded-md border bg-background p-2 text-xs hover:bg-accent"
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="font-medium line-clamp-1">
+                        {m.subject}
+                      </p>
+                      <span className="text-[11px] text-muted-foreground">
+                        {formatDate(m.createdAt)}
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-muted-foreground line-clamp-2">
+                      {m.body}
+                    </p>
+                  </Link>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Right column: actions */}
@@ -583,7 +670,7 @@ export default function CaseDetailPage() {
                   : "Create invoice from this case"}
               </button>
 
-              {/* NEW: New message about this case */}
+              {/* Existing “New message about this case” button on the right */}
               <Link
                 href={`/messages/new?caseId=${caseData.id}`}
                 className="mt-2 block w-full rounded-md border px-3 py-2 text-center text-xs font-medium hover:bg-accent"
@@ -606,8 +693,9 @@ export default function CaseDetailPage() {
           <div className="rounded-xl border bg-card p-4 text-xs text-muted-foreground shadow-sm">
             <p className="font-medium mb-1">What&apos;s next?</p>
             <p>
-              Now that cases, sessions, and invoices are connected, we can
-              move on to Clients and Settings to finish your production flow.
+              Now that cases, sessions, invoices, and messages are connected,
+              we can move on to Clients and Settings to finish your production
+              flow.
             </p>
           </div>
         </div>
