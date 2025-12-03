@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 
@@ -8,60 +8,16 @@ type CaseStatus = "Open" | "Upcoming" | "Closed";
 
 type MediationCase = {
   id: string;
-  title: string;
+  caseNumber: string;
+  matter: string;
   parties: string;
   county: string;
-  type: string;
   status: CaseStatus;
-  nextDate?: string;
-  notes?: string;
+  nextSessionDate: string | null;
+  notes: string | null;
 };
 
-// Same temporary dataset as the list page.
-// Later we'll replace this with a real fetch from Supabase.
-const INITIAL_CASES: MediationCase[] = [
-  {
-    id: "HD-2025-001",
-    title: "Smith vs. Turner – parenting plan",
-    parties: "Alex Smith / Jamie Turner",
-    county: "King County",
-    type: "Family mediation",
-    status: "Upcoming",
-    nextDate: "2025-12-05",
-    notes: "Parenting plan revision; high conflict, needs extra buffer time.",
-  },
-  {
-    id: "HD-2025-002",
-    title: "Johnson vs. Lee – small claims",
-    parties: "Taylor Johnson / Morgan Lee",
-    county: "Pierce County",
-    type: "Small claims",
-    status: "Open",
-    nextDate: "2025-12-10",
-    notes: "Dispute over contractor invoice; discovery in progress.",
-  },
-  {
-    id: "HD-2025-003",
-    title: "Miller vs. Rivera – neighbor dispute",
-    parties: "Chris Miller / Ana Rivera",
-    county: "King County",
-    type: "Civil mediation",
-    status: "Closed",
-    nextDate: undefined,
-    notes: "Settled; follow-up email sent with agreement PDF.",
-  },
-  {
-    id: "HD-2025-004",
-    title: "Acme Corp vs. Vendor – contract renegotiation",
-    parties: "Acme Corp / Vendor LLC",
-    county: "Snohomish County",
-    type: "Commercial",
-    status: "Open",
-    nextDate: "2025-12-15",
-  },
-];
-
-function formatDate(value?: string) {
+function formatDate(value?: string | null) {
   if (!value) return "—";
   const d = new Date(value);
   if (Number.isNaN(d.getTime())) {
@@ -84,16 +40,81 @@ export default function CaseDetailPage() {
   const params = useParams();
   const caseId = (params?.id as string) || "";
 
-  const caseData = useMemo(
-    () => INITIAL_CASES.find((c) => c.id === caseId),
-    [caseId]
-  );
+  const [caseData, setCaseData] = useState<MediationCase | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
-  const [localNotes, setLocalNotes] = useState<string>(
-    caseData?.notes ?? ""
-  );
+  const [localStatus, setLocalStatus] = useState<CaseStatus>("Open");
+  const [localNotes, setLocalNotes] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [saveSuccess, setSaveSuccess] = useState(false);
 
-  if (!caseData) {
+  useEffect(() => {
+    if (!caseId) return;
+
+    async function loadCase() {
+      try {
+        setLoading(true);
+        setLoadError(null);
+
+        const res = await fetch(`/api/cases/${caseId}`);
+        if (!res.ok) {
+          if (res.status === 404) {
+            throw new Error("Case not found");
+          }
+          throw new Error("Failed to load case");
+        }
+
+        const data = (await res.json()) as MediationCase;
+        setCaseData(data);
+        setLocalStatus(data.status);
+        setLocalNotes(data.notes ?? "");
+      } catch (err: any) {
+        console.error("Error loading case:", err);
+        setLoadError(err?.message ?? "Failed to load case");
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    loadCase();
+  }, [caseId]);
+
+  async function handleSave() {
+    if (!caseId) return;
+    try {
+      setSaving(true);
+      setSaveError(null);
+      setSaveSuccess(false);
+
+      const res = await fetch(`/api/cases/${caseId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          status: localStatus,
+          notes: localNotes,
+        }),
+      });
+
+      if (!res.ok) {
+        throw new Error("Failed to update case");
+      }
+
+      const updated = (await res.json()) as MediationCase;
+      setCaseData(updated);
+      setLocalStatus(updated.status);
+      setLocalNotes(updated.notes ?? "");
+      setSaveSuccess(true);
+    } catch (err: any) {
+      console.error("Error saving case:", err);
+      setSaveError(err?.message ?? "Failed to save changes");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (loading) {
     return (
       <div className="space-y-4">
         <Link
@@ -103,8 +124,24 @@ export default function CaseDetailPage() {
           ← Back to cases
         </Link>
         <div className="rounded-xl border bg-card p-6">
-          <p className="text-sm text-muted-foreground">
-            Case not found. It may have been removed or the ID is incorrect.
+          <p className="text-sm text-muted-foreground">Loading case…</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (loadError || !caseData) {
+    return (
+      <div className="space-y-4">
+        <Link
+          href="/cases"
+          className="text-xs text-muted-foreground hover:underline"
+        >
+          ← Back to cases
+        </Link>
+        <div className="rounded-xl border bg-card p-6">
+          <p className="text-sm text-destructive">
+            {loadError || "Case not found."}
           </p>
         </div>
       </div>
@@ -124,23 +161,23 @@ export default function CaseDetailPage() {
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
             <h1 className="text-2xl font-semibold tracking-tight">
-              {caseData.title}
+              {caseData.matter}
             </h1>
             <p className="text-sm text-muted-foreground">
-              Case ID: {caseData.id}
+              Case ID: {caseData.caseNumber}
             </p>
           </div>
 
           <div className="flex flex-wrap items-center gap-2 text-xs">
             <span
               className={`inline-flex items-center rounded-full px-2 py-0.5 font-medium ${statusBadgeClasses(
-                caseData.status
+                localStatus
               )}`}
             >
-              {caseData.status}
+              {localStatus}
             </span>
             <span className="text-muted-foreground">
-              Next session: {formatDate(caseData.nextDate)}
+              Next session: {formatDate(caseData.nextSessionDate)}
             </span>
           </div>
         </div>
@@ -148,8 +185,9 @@ export default function CaseDetailPage() {
 
       {/* Main layout */}
       <div className="grid gap-4 md:grid-cols-3">
-        {/* Left column: case info */}
+        {/* Left column: case info & notes */}
         <div className="md:col-span-2 space-y-4">
+          {/* Case info */}
           <div className="rounded-xl border bg-card p-4 shadow-sm">
             <h2 className="text-sm font-medium mb-2">Case information</h2>
             <div className="grid gap-2 text-sm md:grid-cols-2">
@@ -162,14 +200,12 @@ export default function CaseDetailPage() {
                 <p>{caseData.county}</p>
               </div>
               <div>
-                <p className="text-xs text-muted-foreground">Matter type</p>
-                <p>{caseData.type}</p>
+                <p className="text-xs text-muted-foreground">Matter</p>
+                <p>{caseData.matter}</p>
               </div>
               <div>
-                <p className="text-xs text-muted-foreground">
-                  Current status
-                </p>
-                <p>{caseData.status}</p>
+                <p className="text-xs text-muted-foreground">Status</p>
+                <p>{localStatus}</p>
               </div>
             </div>
           </div>
@@ -179,7 +215,7 @@ export default function CaseDetailPage() {
             <div className="flex items-center justify-between mb-2">
               <h2 className="text-sm font-medium">Notes</h2>
               <span className="text-[11px] text-muted-foreground">
-                (Local only for now – will be saved to Supabase later)
+                Saved to this case when you click “Save changes”.
               </span>
             </div>
             <textarea
@@ -191,12 +227,12 @@ export default function CaseDetailPage() {
             />
           </div>
 
-          {/* Session history (placeholder) */}
+          {/* Session history placeholder */}
           <div className="rounded-xl border bg-card p-4 shadow-sm">
             <div className="flex items-center justify-between mb-2">
               <h2 className="text-sm font-medium">Session history</h2>
               <span className="text-[11px] text-muted-foreground">
-                (We’ll connect this to the calendar/sessions table next.)
+                We&apos;ll connect this to the calendar/sessions table next.
               </span>
             </div>
             <p className="text-sm text-muted-foreground">
@@ -210,11 +246,34 @@ export default function CaseDetailPage() {
         <div className="space-y-4">
           <div className="rounded-xl border bg-card p-4 shadow-sm">
             <h2 className="text-sm font-medium mb-3">Actions</h2>
+
+            {/* Status selector */}
+            <label className="mb-2 block text-xs font-medium text-muted-foreground">
+              Case status
+            </label>
+            <select
+              className="mb-3 w-full rounded-md border bg-background px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              value={localStatus}
+              onChange={(e) => setLocalStatus(e.target.value as CaseStatus)}
+            >
+              <option value="Open">Open</option>
+              <option value="Upcoming">Upcoming</option>
+              <option value="Closed">Closed</option>
+            </select>
+
             <button
               type="button"
-              className="mb-2 w-full rounded-md bg-primary px-3 py-2 text-xs font-medium text-primary-foreground hover:opacity-90"
+              className="mb-2 w-full rounded-md bg-primary px-3 py-2 text-xs font-medium text-primary-foreground hover:opacity-90 disabled:opacity-60"
+              onClick={handleSave}
+              disabled={saving}
+            >
+              {saving ? "Saving…" : "Save changes"}
+            </button>
+
+            <button
+              type="button"
+              className="mt-1 w-full rounded-md border px-3 py-2 text-xs font-medium hover:bg-accent"
               onClick={() => {
-                // Later this will navigate to /invoices/new?caseId=...
                 alert(
                   "In production, this will create an invoice linked to this case."
                 );
@@ -223,20 +282,22 @@ export default function CaseDetailPage() {
               Create invoice from this case
             </button>
 
-            <button
-              type="button"
-              className="mt-1 w-full rounded-md border px-3 py-2 text-xs font-medium hover:bg-accent"
-            >
-              Update status (coming soon)
-            </button>
+            {saveError && (
+              <p className="mt-2 text-xs text-destructive">{saveError}</p>
+            )}
+            {saveSuccess && !saveError && (
+              <p className="mt-2 text-xs text-emerald-700">
+                Changes saved.
+              </p>
+            )}
           </div>
 
           <div className="rounded-xl border bg-card p-4 text-xs text-muted-foreground shadow-sm">
             <p className="font-medium mb-1">What&apos;s next?</p>
             <p>
-              Once we connect this page to Supabase, you&apos;ll be able to
-              update status, attach sessions, and auto-generate invoices
-              based on this case.
+              Next we can connect session history from the calendar and wire
+              the invoice button so it pre-fills a draft in your billing
+              module.
             </p>
           </div>
         </div>
