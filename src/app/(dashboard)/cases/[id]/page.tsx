@@ -2,7 +2,7 @@
 
 import { useEffect, useState, FormEvent } from "react";
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 
 type CaseStatus = "Open" | "Upcoming" | "Closed";
 
@@ -50,6 +50,7 @@ function statusBadgeClasses(status: CaseStatus) {
 
 export default function CaseDetailPage() {
   const params = useParams();
+  const router = useRouter();
   const caseId = (params?.id as string) || "";
 
   const [caseData, setCaseData] = useState<MediationCase | null>(null);
@@ -74,6 +75,16 @@ export default function CaseDetailPage() {
   const [newSessionCompleted, setNewSessionCompleted] = useState(false);
   const [creatingSession, setCreatingSession] = useState(false);
   const [newSessionError, setNewSessionError] = useState<string | null>(null);
+
+  // Invoice-from-case state
+  const [invoiceRate, setInvoiceRate] = useState("200"); // default hourly rate
+  const [creatingInvoice, setCreatingInvoice] = useState(false);
+  const [invoiceError, setInvoiceError] = useState<string | null>(null);
+
+  // Sum of completed session hours on this case
+  const completedHours = sessions
+    .filter((s) => s.completed)
+    .reduce((sum, s) => sum + (s.durationHours || 0), 0);
 
   useEffect(() => {
     if (!caseId) return;
@@ -210,6 +221,44 @@ export default function CaseDetailPage() {
       setNewSessionError(err?.message ?? "Failed to create session");
     } finally {
       setCreatingSession(false);
+    }
+  }
+
+  async function handleCreateInvoiceFromCase() {
+    if (!caseData) return;
+
+    try {
+      setCreatingInvoice(true);
+      setInvoiceError(null);
+
+      const hoursToBill = completedHours;
+      const rateNumber = Number.parseFloat(invoiceRate || "0");
+
+      const res = await fetch("/api/invoices", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          caseNumber: caseData.caseNumber,
+          matter: caseData.matter,
+          contact: caseData.parties,
+          hours: hoursToBill,
+          rate: rateNumber,
+        }),
+      });
+
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body?.error || "Failed to create invoice");
+      }
+
+      // const created = await res.json(); // not used yet, but available
+      // Redirect to Billing & Courts where the new invoice will be at the top
+      router.push("/billing");
+    } catch (err: any) {
+      console.error("Error creating invoice from case:", err);
+      setInvoiceError(err?.message ?? "Failed to create invoice");
+    } finally {
+      setCreatingInvoice(false);
     }
   }
 
@@ -489,18 +538,6 @@ export default function CaseDetailPage() {
               {savingCase ? "Saving…" : "Save changes"}
             </button>
 
-            <button
-              type="button"
-              className="mt-1 w-full rounded-md border px-3 py-2 text-xs font-medium hover:bg-accent"
-              onClick={() => {
-                alert(
-                  "In production, this will create an invoice linked to this case."
-                );
-              }}
-            >
-              Create invoice from this case
-            </button>
-
             {caseSaveError && (
               <p className="mt-2 text-xs text-destructive">
                 {caseSaveError}
@@ -511,13 +548,59 @@ export default function CaseDetailPage() {
                 Changes saved.
               </p>
             )}
+
+            {/* Invoice from case */}
+            <div className="mt-4 border-t pt-3 space-y-2">
+              <p className="text-[11px] text-muted-foreground">
+                Completed session hours on this case:{" "}
+                <span className="font-medium">
+                  {completedHours.toFixed(2)} hr
+                  {completedHours === 1 ? "" : "s"}
+                </span>
+              </p>
+
+              <div className="space-y-1">
+                <label className="block text-[11px] text-muted-foreground">
+                  Hourly rate for this invoice
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  step="10"
+                  value={invoiceRate}
+                  onChange={(e) => setInvoiceRate(e.target.value)}
+                  className="w-full rounded-md border bg-background px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                />
+              </div>
+
+              <button
+                type="button"
+                className="w-full rounded-md border px-3 py-2 text-xs font-medium hover:bg-accent disabled:opacity-60"
+                onClick={handleCreateInvoiceFromCase}
+                disabled={creatingInvoice}
+              >
+                {creatingInvoice
+                  ? "Creating invoice…"
+                  : "Create invoice from this case"}
+              </button>
+
+              {invoiceError && (
+                <p className="text-xs text-destructive">{invoiceError}</p>
+              )}
+
+              <p className="text-[11px] text-muted-foreground">
+                We&apos;ll create a Draft invoice in Billing &amp; Courts
+                using the case details and completed session hours. You can
+                adjust hours and rate before sending.
+              </p>
+            </div>
           </div>
 
           <div className="rounded-xl border bg-card p-4 text-xs text-muted-foreground shadow-sm">
             <p className="font-medium mb-1">What&apos;s next?</p>
             <p>
-              Now that sessions are tracked, we can use them to auto-calc
-              hours and generate draft invoices directly from this case.
+              Now that cases, sessions, and invoices are connected, we can
+              move on to Clients and Settings to finish your production flow.
             </p>
           </div>
         </div>
