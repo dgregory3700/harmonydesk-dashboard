@@ -1,80 +1,147 @@
-import { RequireAuth } from "@/components/auth/RequireAuth";
+"use client";
 
-const sampleClients = [
-  {
-    name: "Jeanne Potthoff",
-    email: "jeanne@example.com",
-    phone: "(206) 555-0182",
-    nextSession: "Dec 12, 10:00 AM",
-  },
-  {
-    name: "Mr. Smith",
-    email: "mr.smith@example.com",
-    phone: "(425) 555-0104",
-    nextSession: "Dec 14, 1:30 PM",
-  },
-  {
-    name: "Anderson / Rivera",
-    email: "anderson.rivera@example.com",
-    phone: "(253) 555-0199",
-    nextSession: "Dec 20, 4:00 PM",
-  },
-];
+import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
+
+type Client = {
+  id: string;
+  name: string;
+  email: string | null;
+  phone: string | null;
+  notes: string | null;
+};
 
 export default function ClientsPage() {
+  const [clients, setClients] = useState<Client[]>([]);
+  const [search, setSearch] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    async function loadClients() {
+      try {
+        setLoading(true);
+        setError(null);
+
+        const res = await fetch("/api/clients");
+        if (!res.ok) {
+          throw new Error("Failed to load clients");
+        }
+
+        const data = (await res.json()) as Client[];
+        setClients(data);
+      } catch (err: any) {
+        console.error("Error loading clients:", err);
+        setError(err?.message ?? "Failed to load clients");
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    loadClients();
+  }, []);
+
+  const filtered = useMemo(() => {
+    const q = search.toLowerCase().trim();
+    if (!q) return clients;
+    return clients.filter((c) => {
+      const haystack = (
+        c.name +
+        " " +
+        (c.email ?? "") +
+        " " +
+        (c.phone ?? "")
+      ).toLowerCase();
+      return haystack.includes(q);
+    });
+  }, [clients, search]);
+
   return (
-    <RequireAuth>
-      <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-semibold tracking-tight">Clients</h1>
-            <p className="text-sm text-muted-foreground">
-              One place for client contact details and upcoming sessions.
-            </p>
-          </div>
-        </div>
-
-        <div className="rounded-xl border bg-card p-4 shadow-sm">
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="text-sm font-medium">Client list</h2>
-            <button
-              type="button"
-              className="rounded-md border px-3 py-1 text-xs font-medium hover:bg-accent"
-            >
-              New client (UI only)
-            </button>
-          </div>
-
-          <div className="overflow-x-auto">
-            <table className="min-w-full text-left text-xs">
-              <thead>
-                <tr className="border-b bg-muted/40">
-                  <th className="px-2 py-2 font-medium">Name</th>
-                  <th className="px-2 py-2 font-medium">Email</th>
-                  <th className="px-2 py-2 font-medium">Phone</th>
-                  <th className="px-2 py-2 font-medium">Next session</th>
-                </tr>
-              </thead>
-              <tbody>
-                {sampleClients.map((c) => (
-                  <tr key={c.email} className="border-b last:border-0">
-                    <td className="px-2 py-2">{c.name}</td>
-                    <td className="px-2 py-2">{c.email}</td>
-                    <td className="px-2 py-2">{c.phone}</td>
-                    <td className="px-2 py-2">{c.nextSession}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-
-          <p className="mt-3 text-xs text-muted-foreground">
-            Later, this table can sync with your real CRM or Supabase
-            <code> clients </code> table. For launch, showing a clean list with
-            basic info is already valuable.
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight">Clients</h1>
+          <p className="text-sm text-muted-foreground">
+            Keep track of the people and attorneys you work with.
           </p>
         </div>
+
+        <Link
+          href="/clients/new"
+          className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90"
+        >
+          + New client
+        </Link>
       </div>
-    </RequireAuth>
+
+      {/* Filters + search */}
+      <div className="flex flex-col gap-3 rounded-xl border bg-card p-4 shadow-sm md:flex-row md:items-center md:justify-between">
+        <p className="text-xs text-muted-foreground">
+          View and manage your client list.
+        </p>
+        <div className="w-full md:w-64">
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search by name, email, phone…"
+            className="w-full rounded-md border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+          />
+        </div>
+      </div>
+
+      {/* Client list */}
+      <div className="rounded-xl border bg-card p-4 shadow-sm">
+        <h2 className="mb-3 text-sm font-medium">Client list</h2>
+
+        {loading ? (
+          <p className="text-sm text-muted-foreground">Loading clients…</p>
+        ) : error ? (
+          <p className="text-sm text-destructive">{error}</p>
+        ) : filtered.length === 0 ? (
+          <p className="text-sm text-muted-foreground">
+            No clients yet. Start by adding your first client.
+          </p>
+        ) : (
+          <div className="space-y-3">
+            {filtered.map((c) => (
+              <div
+                key={c.id}
+                className="flex flex-col gap-3 rounded-lg border bg-background p-3 md:flex-row md:items-center md:justify-between"
+              >
+                <div className="space-y-1">
+                  <p className="text-sm font-medium">{c.name}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {c.email || "No email on file"}
+                    {c.phone ? ` • ${c.phone}` : ""}
+                  </p>
+                  {c.notes && (
+                    <p className="text-xs text-muted-foreground line-clamp-2">
+                      {c.notes}
+                    </p>
+                  )}
+                </div>
+
+                <div className="flex gap-2 text-xs">
+                  <Link
+                    href={`/clients/${c.id}`}
+                    className="rounded-md border px-3 py-1 font-medium hover:bg-accent"
+                  >
+                    View client
+                  </Link>
+                  <Link
+                    href={`/cases/new`}
+                    className="rounded-md border px-3 py-1 font-medium hover:bg-accent"
+                  >
+                    Add case
+                  </Link>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
   );
 }
