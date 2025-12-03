@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, FormEvent } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 
@@ -17,16 +17,28 @@ type MediationCase = {
   notes: string | null;
 };
 
+type MediationSession = {
+  id: string;
+  userEmail: string;
+  caseId: string;
+  date: string;
+  durationHours: number;
+  notes: string | null;
+  completed: boolean;
+};
+
 function formatDate(value?: string | null) {
   if (!value) return "—";
   const d = new Date(value);
   if (Number.isNaN(d.getTime())) {
     return value;
   }
-  return d.toLocaleDateString("en-US", {
+  return d.toLocaleString("en-US", {
     month: "short",
     day: "numeric",
     year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
   });
 }
 
@@ -41,22 +53,35 @@ export default function CaseDetailPage() {
   const caseId = (params?.id as string) || "";
 
   const [caseData, setCaseData] = useState<MediationCase | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState<string | null>(null);
+  const [loadingCase, setLoadingCase] = useState(true);
+  const [caseError, setCaseError] = useState<string | null>(null);
 
   const [localStatus, setLocalStatus] = useState<CaseStatus>("Open");
   const [localNotes, setLocalNotes] = useState("");
-  const [saving, setSaving] = useState(false);
-  const [saveError, setSaveError] = useState<string | null>(null);
-  const [saveSuccess, setSaveSuccess] = useState(false);
+  const [savingCase, setSavingCase] = useState(false);
+  const [caseSaveError, setCaseSaveError] = useState<string | null>(null);
+  const [caseSaveSuccess, setCaseSaveSuccess] = useState(false);
+
+  // Sessions state
+  const [sessions, setSessions] = useState<MediationSession[]>([]);
+  const [loadingSessions, setLoadingSessions] = useState(true);
+  const [sessionsError, setSessionsError] = useState<string | null>(null);
+
+  // New session form
+  const [newSessionDate, setNewSessionDate] = useState("");
+  const [newSessionDuration, setNewSessionDuration] = useState("1.0");
+  const [newSessionNotes, setNewSessionNotes] = useState("");
+  const [newSessionCompleted, setNewSessionCompleted] = useState(false);
+  const [creatingSession, setCreatingSession] = useState(false);
+  const [newSessionError, setNewSessionError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!caseId) return;
 
     async function loadCase() {
       try {
-        setLoading(true);
-        setLoadError(null);
+        setLoadingCase(true);
+        setCaseError(null);
 
         const res = await fetch(`/api/cases/${caseId}`);
         if (!res.ok) {
@@ -72,21 +97,47 @@ export default function CaseDetailPage() {
         setLocalNotes(data.notes ?? "");
       } catch (err: any) {
         console.error("Error loading case:", err);
-        setLoadError(err?.message ?? "Failed to load case");
+        setCaseError(err?.message ?? "Failed to load case");
       } finally {
-        setLoading(false);
+        setLoadingCase(false);
       }
     }
 
     loadCase();
   }, [caseId]);
 
-  async function handleSave() {
+  useEffect(() => {
+    if (!caseId) return;
+
+    async function loadSessions() {
+      try {
+        setLoadingSessions(true);
+        setSessionsError(null);
+
+        const res = await fetch(`/api/sessions?caseId=${caseId}`);
+        if (!res.ok) {
+          throw new Error("Failed to load sessions");
+        }
+
+        const data = (await res.json()) as MediationSession[];
+        setSessions(data);
+      } catch (err: any) {
+        console.error("Error loading sessions:", err);
+        setSessionsError(err?.message ?? "Failed to load sessions");
+      } finally {
+        setLoadingSessions(false);
+      }
+    }
+
+    loadSessions();
+  }, [caseId]);
+
+  async function handleSaveCase() {
     if (!caseId) return;
     try {
-      setSaving(true);
-      setSaveError(null);
-      setSaveSuccess(false);
+      setSavingCase(true);
+      setCaseSaveError(null);
+      setCaseSaveSuccess(false);
 
       const res = await fetch(`/api/cases/${caseId}`, {
         method: "PATCH",
@@ -105,16 +156,64 @@ export default function CaseDetailPage() {
       setCaseData(updated);
       setLocalStatus(updated.status);
       setLocalNotes(updated.notes ?? "");
-      setSaveSuccess(true);
+      setCaseSaveSuccess(true);
     } catch (err: any) {
       console.error("Error saving case:", err);
-      setSaveError(err?.message ?? "Failed to save changes");
+      setCaseSaveError(err?.message ?? "Failed to save changes");
     } finally {
-      setSaving(false);
+      setSavingCase(false);
     }
   }
 
-  if (loading) {
+  async function handleCreateSession(e: FormEvent) {
+    e.preventDefault();
+    if (!caseId || creatingSession) return;
+
+    try {
+      setCreatingSession(true);
+      setNewSessionError(null);
+
+      if (!newSessionDate.trim()) {
+        setNewSessionError("Please choose a session date/time.");
+        setCreatingSession(false);
+        return;
+      }
+
+      const res = await fetch("/api/sessions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          caseId,
+          date: newSessionDate,
+          durationHours: newSessionDuration,
+          notes: newSessionNotes.trim() || null,
+          completed: newSessionCompleted,
+        }),
+      });
+
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body?.error || "Failed to create session");
+      }
+
+      const created = (await res.json()) as MediationSession;
+      // Prepend new session to the list
+      setSessions((prev) => [created, ...prev]);
+
+      // Reset form
+      setNewSessionDate("");
+      setNewSessionDuration("1.0");
+      setNewSessionNotes("");
+      setNewSessionCompleted(false);
+    } catch (err: any) {
+      console.error("Error creating session:", err);
+      setNewSessionError(err?.message ?? "Failed to create session");
+    } finally {
+      setCreatingSession(false);
+    }
+  }
+
+  if (loadingCase) {
     return (
       <div className="space-y-4">
         <Link
@@ -130,7 +229,7 @@ export default function CaseDetailPage() {
     );
   }
 
-  if (loadError || !caseData) {
+  if (caseError || !caseData) {
     return (
       <div className="space-y-4">
         <Link
@@ -141,7 +240,7 @@ export default function CaseDetailPage() {
         </Link>
         <div className="rounded-xl border bg-card p-6">
           <p className="text-sm text-destructive">
-            {loadError || "Case not found."}
+            {caseError || "Case not found."}
           </p>
         </div>
       </div>
@@ -185,7 +284,7 @@ export default function CaseDetailPage() {
 
       {/* Main layout */}
       <div className="grid gap-4 md:grid-cols-3">
-        {/* Left column: case info & notes */}
+        {/* Left column: case info & notes & sessions */}
         <div className="md:col-span-2 space-y-4">
           {/* Case info */}
           <div className="rounded-xl border bg-card p-4 shadow-sm">
@@ -227,18 +326,138 @@ export default function CaseDetailPage() {
             />
           </div>
 
-          {/* Session history placeholder */}
-          <div className="rounded-xl border bg-card p-4 shadow-sm">
-            <div className="flex items-center justify-between mb-2">
+          {/* Session history */}
+          <div className="rounded-xl border bg-card p-4 shadow-sm space-y-3">
+            <div className="flex items-center justify-between">
               <h2 className="text-sm font-medium">Session history</h2>
               <span className="text-[11px] text-muted-foreground">
-                We&apos;ll connect this to the calendar/sessions table next.
+                Past and upcoming sessions for this case.
               </span>
             </div>
-            <p className="text-sm text-muted-foreground">
-              No sessions linked yet. Later, completed sessions from your
-              calendar will appear here.
-            </p>
+
+            {loadingSessions ? (
+              <p className="text-sm text-muted-foreground">
+                Loading sessions…
+              </p>
+            ) : sessionsError ? (
+              <p className="text-sm text-destructive">
+                {sessionsError}
+              </p>
+            ) : sessions.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                No sessions recorded yet. Add your first one below.
+              </p>
+            ) : (
+              <div className="space-y-2">
+                {sessions.map((s) => (
+                  <div
+                    key={s.id}
+                    className="flex flex-col gap-1 rounded-md border bg-background p-2 text-xs md:flex-row md:items-center md:justify-between"
+                  >
+                    <div className="space-y-0.5">
+                      <p className="font-medium">
+                        {formatDate(s.date)} • {s.durationHours} hr
+                        {s.durationHours !== 1 ? "s" : ""}
+                      </p>
+                      {s.notes && (
+                        <p className="text-muted-foreground line-clamp-2">
+                          {s.notes}
+                        </p>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2 md:items-start">
+                      <span
+                        className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ${
+                          s.completed
+                            ? "bg-emerald-100 text-emerald-800"
+                            : "bg-blue-100 text-blue-800"
+                        }`}
+                      >
+                        {s.completed ? "Completed" : "Upcoming"}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Add session form */}
+            <form
+              onSubmit={handleCreateSession}
+              className="mt-3 space-y-2 rounded-md border bg-background p-3"
+            >
+              <p className="text-[11px] font-medium text-muted-foreground">
+                Add session
+              </p>
+
+              <div className="grid gap-2 md:grid-cols-2">
+                <div className="space-y-1">
+                  <label className="block text-[11px] text-muted-foreground">
+                    Date & time *
+                  </label>
+                  <input
+                    type="datetime-local"
+                    value={newSessionDate}
+                    onChange={(e) => setNewSessionDate(e.target.value)}
+                    className="w-full rounded-md border bg-card px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="block text-[11px] text-muted-foreground">
+                    Duration (hours)
+                  </label>
+                  <input
+                    type="number"
+                    step="0.25"
+                    min="0.25"
+                    value={newSessionDuration}
+                    onChange={(e) => setNewSessionDuration(e.target.value)}
+                    className="w-full rounded-md border bg-card px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <label className="block text-[11px] text-muted-foreground">
+                  Notes
+                </label>
+                <textarea
+                  value={newSessionNotes}
+                  onChange={(e) => setNewSessionNotes(e.target.value)}
+                  rows={2}
+                  className="w-full rounded-md border bg-card px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  placeholder="What was covered in this session?"
+                />
+              </div>
+
+              <div className="flex items-center justify-between gap-2">
+                <label className="flex items-center gap-2 text-[11px] text-muted-foreground">
+                  <input
+                    type="checkbox"
+                    checked={newSessionCompleted}
+                    onChange={(e) =>
+                      setNewSessionCompleted(e.target.checked)
+                    }
+                    className="h-3 w-3"
+                  />
+                  Mark as completed
+                </label>
+
+                <button
+                  type="submit"
+                  disabled={creatingSession}
+                  className="rounded-md bg-primary px-3 py-1.5 text-[11px] font-medium text-primary-foreground hover:opacity-90 disabled:opacity-60"
+                >
+                  {creatingSession ? "Adding…" : "Add session"}
+                </button>
+              </div>
+
+              {newSessionError && (
+                <p className="text-[11px] text-destructive mt-1">
+                  {newSessionError}
+                </p>
+              )}
+            </form>
           </div>
         </div>
 
@@ -264,10 +483,10 @@ export default function CaseDetailPage() {
             <button
               type="button"
               className="mb-2 w-full rounded-md bg-primary px-3 py-2 text-xs font-medium text-primary-foreground hover:opacity-90 disabled:opacity-60"
-              onClick={handleSave}
-              disabled={saving}
+              onClick={handleSaveCase}
+              disabled={savingCase}
             >
-              {saving ? "Saving…" : "Save changes"}
+              {savingCase ? "Saving…" : "Save changes"}
             </button>
 
             <button
@@ -282,10 +501,12 @@ export default function CaseDetailPage() {
               Create invoice from this case
             </button>
 
-            {saveError && (
-              <p className="mt-2 text-xs text-destructive">{saveError}</p>
+            {caseSaveError && (
+              <p className="mt-2 text-xs text-destructive">
+                {caseSaveError}
+              </p>
             )}
-            {saveSuccess && !saveError && (
+            {caseSaveSuccess && !caseSaveError && (
               <p className="mt-2 text-xs text-emerald-700">
                 Changes saved.
               </p>
@@ -295,9 +516,8 @@ export default function CaseDetailPage() {
           <div className="rounded-xl border bg-card p-4 text-xs text-muted-foreground shadow-sm">
             <p className="font-medium mb-1">What&apos;s next?</p>
             <p>
-              Next we can connect session history from the calendar and wire
-              the invoice button so it pre-fills a draft in your billing
-              module.
+              Now that sessions are tracked, we can use them to auto-calc
+              hours and generate draft invoices directly from this case.
             </p>
           </div>
         </div>
