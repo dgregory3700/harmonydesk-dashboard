@@ -251,7 +251,6 @@ export default function CaseDetailPage() {
         throw new Error(body?.error || "Failed to create invoice");
       }
 
-      // const created = await res.json(); // not used yet, but available
       // Redirect to Billing & Courts where the new invoice will be at the top
       router.push("/billing");
     } catch (err: any) {
@@ -583,6 +582,14 @@ export default function CaseDetailPage() {
                   ? "Creating invoice…"
                   : "Create invoice from this case"}
               </button>
+
+              {/* NEW: New message about this case */}
+              <Link
+                href={`/messages/new?caseId=${caseData.id}`}
+                className="mt-2 block w-full rounded-md border px-3 py-2 text-center text-xs font-medium hover:bg-accent"
+              >
+                New message about this case
+              </Link>
 
               {invoiceError && (
                 <p className="text-xs text-destructive">{invoiceError}</p>
