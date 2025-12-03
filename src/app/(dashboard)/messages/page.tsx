@@ -1,351 +1,193 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
 
-type MessageStatus = "unread" | "read" | "needs-reply" | "archived";
+type CaseStatus = "Open" | "Upcoming" | "Closed";
+
+type MediationCase = {
+  id: string;
+  caseNumber: string;
+  matter: string;
+  parties: string;
+  county: string;
+  status: CaseStatus;
+  nextSessionDate: string | null;
+  notes: string | null;
+};
 
 type Message = {
   id: string;
-  from: string;
-  fromEmail: string;
-  participants: string;
-  caseTitle: string;
-  caseNumber: string;
-  preview: string;
+  caseId: string | null;
+  subject: string;
   body: string;
-  receivedAt: string; // e.g. "Today • 10:24 AM"
-  status: MessageStatus;
+  createdAt: string;
 };
 
-const SAMPLE_MESSAGES: Message[] = [
-  {
-    id: "1",
-    from: "Taylor Johnson",
-    fromEmail: "taylor@example.com",
-    participants: "Taylor Johnson • Morgan Lee",
-    caseTitle: "Johnson vs. Lee – small claims",
-    caseNumber: "HD-2025-002",
-    preview: "Hi, I have a question about our next session…",
-    body:
-      "Hi Duel,\n\nI have a question about our next session. Do we need to bring any additional documents for the small-claims portion, or just the financial disclosures?\n\nThank you,\nTaylor",
-    receivedAt: "Today • 10:24 AM",
-    status: "needs-reply",
-  },
-  {
-    id: "2",
-    from: "Alex Smith",
-    fromEmail: "alex@example.com",
-    participants: "Alex Smith • Jamie Turner",
-    caseTitle: "Smith vs. Turner – parenting plan",
-    caseNumber: "HD-2025-001",
-    preview: "Thank you for sending the draft agreement.",
-    body:
-      "Hi Duel,\n\nThank you for sending the draft agreement. I’ve reviewed it and added a couple of comments regarding the holiday schedule. Everything else looks good.\n\nBest,\nAlex",
-    receivedAt: "Yesterday • 4:02 PM",
-    status: "read",
-  },
-  {
-    id: "3",
-    from: "County Coordinator",
-    fromEmail: "coordinator@kingcounty.gov",
-    participants: "King County District Court",
-    caseTitle: "Monthly report – King County",
-    caseNumber: "ADMIN",
-    preview: "Reminder: please submit your month-end mediation report…",
-    body:
-      "Dear provider,\n\nThis is a reminder to submit your month-end mediation report by the 5th business day of the following month.\n\nThank you,\nKing County District Court",
-    receivedAt: "Mon • 9:15 AM",
-    status: "unread",
-  },
-  {
-    id: "4",
-    from: "Acme Corp Legal",
-    fromEmail: "legal@acmecorp.com",
-    participants: "Acme Corp • Vendor LLC",
-    caseTitle: "Acme Corp vs. Vendor – contract renegotiation",
-    caseNumber: "HD-2025-004",
-    preview: "We’ve attached the signed agreement for your records.",
-    body:
-      "Hi Duel,\n\nWe’ve attached the signed agreement for your records. Please let us know if you need anything else from our side.\n\nBest regards,\nAcme Corp Legal",
-    receivedAt: "Last week",
-    status: "archived",
-  },
-];
-
-type FilterKey = "all" | "unread" | "needs-reply" | "archived";
-
-const FILTERS: { key: FilterKey; label: string }[] = [
-  { key: "all", label: "All" },
-  { key: "unread", label: "Unread" },
-  { key: "needs-reply", label: "Needs reply" },
-  { key: "archived", label: "Archived" },
-];
+function formatDate(value?: string | null) {
+  if (!value) return "—";
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) {
+    return value;
+  }
+  return d.toLocaleString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
 
 export default function MessagesPage() {
-  const [messages, setMessages] = useState<Message[]>(SAMPLE_MESSAGES);
-  const [activeFilter, setActiveFilter] = useState<FilterKey>("all");
-  const [selectedId, setSelectedId] = useState<string | null>(
-    SAMPLE_MESSAGES[0]?.id ?? null
-  );
+  const router = useRouter();
+
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [cases, setCases] = useState<MediationCase[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
 
-  const stats = useMemo(
-    () => ({
-      total: messages.length,
-      unread: messages.filter((m) => m.status === "unread").length,
-      needsReply: messages.filter((m) => m.status === "needs-reply").length,
-    }),
-    [messages]
-  );
+  useEffect(() => {
+    async function loadData() {
+      try {
+        setLoading(true);
+        setError(null);
 
-  const filteredMessages = useMemo(() => {
-    return messages.filter((m) => {
-      if (activeFilter === "unread" && m.status !== "unread") return false;
-      if (activeFilter === "needs-reply" && m.status !== "needs-reply")
-        return false;
-      if (activeFilter === "archived" && m.status !== "archived") return false;
+        const [messagesRes, casesRes] = await Promise.all([
+          fetch("/api/messages"),
+          fetch("/api/cases"),
+        ]);
 
-      if (search.trim()) {
-        const q = search.toLowerCase();
-        const haystack = [
-          m.from,
-          m.fromEmail,
-          m.caseTitle,
-          m.caseNumber,
-          m.preview,
-        ]
-          .join(" ")
-          .toLowerCase();
-        if (!haystack.includes(q)) return false;
+        if (!messagesRes.ok) {
+          throw new Error("Failed to load messages");
+        }
+        if (!casesRes.ok) {
+          throw new Error("Failed to load cases");
+        }
+
+        const messagesJson = (await messagesRes.json()) as Message[];
+        const casesJson = (await casesRes.json()) as MediationCase[];
+
+        setMessages(messagesJson);
+        setCases(casesJson);
+      } catch (err: any) {
+        console.error("Error loading messages:", err);
+        setError(err?.message ?? "Failed to load messages");
+      } finally {
+        setLoading(false);
       }
-
-      return true;
-    });
-  }, [messages, activeFilter, search]);
-
-  const selected =
-    filteredMessages.find((m) => m.id === selectedId) ||
-    filteredMessages[0] ||
-    null;
-
-  // When selecting a message, mark it as read
-  function handleSelect(message: Message) {
-    setSelectedId(message.id);
-    if (message.status === "unread") {
-      setMessages((prev) =>
-        prev.map((m) =>
-          m.id === message.id ? { ...m, status: "read" } : m
-        )
-      );
     }
+
+    loadData();
+  }, []);
+
+  const caseById = useMemo(() => {
+    const map = new Map<string, MediationCase>();
+    for (const c of cases) {
+      map.set(c.id, c);
+    }
+    return map;
+  }, [cases]);
+
+  const filtered = useMemo(() => {
+    const q = search.toLowerCase().trim();
+    if (!q) return messages;
+
+    return messages.filter((m) => {
+      const haystack = (m.subject + " " + m.body).toLowerCase();
+      return haystack.includes(q);
+    });
+  }, [messages, search]);
+
+  function handleRowClick(id: string) {
+    router.push(`/messages/${id}`);
   }
 
   return (
     <div className="space-y-6">
-      {/* Header + stats */}
-      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+      {/* Header */}
+      <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">
             Messages
           </h1>
           <p className="text-sm text-muted-foreground">
-            Keep track of client emails and county communication.
+            Keep internal notes or message history linked to your cases.
           </p>
         </div>
 
-        <div className="grid grid-cols-3 gap-3 text-right text-sm">
-          <div className="rounded-lg border bg-card px-3 py-2">
-            <p className="text-xs text-muted-foreground">Total</p>
-            <p className="text-lg font-semibold">{stats.total}</p>
-          </div>
-          <div className="rounded-lg border bg-card px-3 py-2">
-            <p className="text-xs text-muted-foreground">Unread</p>
-            <p className="text-lg font-semibold">{stats.unread}</p>
-          </div>
-          <div className="rounded-lg border bg-card px-3 py-2">
-            <p className="text-xs text-muted-foreground">
-              Needs reply
-            </p>
-            <p className="text-lg font-semibold">{stats.needsReply}</p>
-          </div>
-        </div>
+        <Link
+          href="/messages/new"
+          className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90"
+        >
+          + New message
+        </Link>
       </div>
 
-      {/* Filters + search */}
-      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="text-xs font-medium text-muted-foreground">
-            Status:
-          </span>
-          {FILTERS.map((f) => (
-            <button
-              key={f.key}
-              type="button"
-              onClick={() => setActiveFilter(f.key)}
-              className={`rounded-full border px-3 py-1 text-xs font-medium ${
-                activeFilter === f.key
-                  ? "border-sky-500 bg-sky-50 text-sky-700"
-                  : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
-              }`}
-            >
-              {f.label}
-            </button>
-          ))}
-        </div>
-
-        <div className="w-full md:w-72">
+      {/* Search */}
+      <div className="flex flex-col gap-3 rounded-xl border bg-card p-4 shadow-sm md:flex-row md:items-center md:justify-between">
+        <p className="text-xs text-muted-foreground">
+          Messages are internal-only for now. Later we can connect email or
+          SMS providers.
+        </p>
+        <div className="w-full md:w-64">
           <input
             type="text"
-            placeholder="Search by case, client, or email…"
-            className="w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm shadow-sm focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-500/40"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search by subject or text…"
+            className="w-full rounded-md border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
           />
         </div>
       </div>
 
-      {/* Layout: list + detail */}
-      <div className="grid gap-4 rounded-xl border bg-card p-4 shadow-sm md:grid-cols-[minmax(0,1.1fr)_minmax(0,1.3fr)]">
-        {/* Conversation list */}
-        <div className="border-r border-slate-200 pr-3">
-          <h2 className="mb-2 text-xs font-medium uppercase tracking-wide text-slate-500">
-            Inbox
-          </h2>
-          {filteredMessages.length === 0 ? (
-            <p className="text-sm text-muted-foreground">
-              No messages match your filters.
-            </p>
-          ) : (
-            <ul className="space-y-1">
-              {filteredMessages.map((m) => {
-                const isSelected = selected?.id === m.id;
-                const isUnread = m.status === "unread";
-                const needsReply = m.status === "needs-reply";
+      {/* List */}
+      <div className="rounded-xl border bg-card p-4 shadow-sm">
+        <h2 className="mb-3 text-sm font-medium">Inbox</h2>
 
-                return (
-                  <li key={m.id}>
-                    <button
-                      type="button"
-                      onClick={() => handleSelect(m)}
-                      className={`flex w-full flex-col items-start rounded-lg border px-3 py-2 text-left text-sm transition ${
-                        isSelected
-                          ? "border-sky-500 bg-sky-50"
-                          : "border-transparent hover:border-slate-200 hover:bg-slate-50"
-                      }`}
-                    >
-                      <div className="flex w-full items-center justify-between gap-2">
-                        <span
-                          className={`truncate text-sm ${
-                            isUnread || needsReply
-                              ? "font-semibold text-slate-900"
-                              : "text-slate-800"
-                          }`}
-                        >
-                          {m.from}
-                        </span>
-                        <span className="whitespace-nowrap text-xs text-muted-foreground">
-                          {m.receivedAt}
-                        </span>
-                      </div>
-                      <p className="mt-0.5 line-clamp-1 text-xs text-muted-foreground">
-                        {m.caseTitle}
-                      </p>
-                      <p className="mt-0.5 line-clamp-1 text-xs text-slate-700">
-                        {m.preview}
-                      </p>
-                      <div className="mt-1 flex flex-wrap gap-1">
-                        {isUnread && (
-                          <span className="rounded-full bg-sky-100 px-2 py-0.5 text-[10px] font-medium text-sky-700">
-                            Unread
-                          </span>
-                        )}
-                        {needsReply && (
-                          <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-700">
-                            Needs reply
-                          </span>
-                        )}
-                      </div>
-                    </button>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-        </div>
-
-        {/* Message detail */}
-        <div className="pl-0 md:pl-3">
-          {selected ? (
-            <>
-              <div className="mb-4 border-b border-slate-200 pb-3">
-                <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
-                  {selected.caseNumber}
-                </p>
-                <h2 className="mt-1 text-lg font-semibold text-slate-900">
-                  {selected.caseTitle}
-                </h2>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  Participants: {selected.participants}
-                </p>
-              </div>
-
-              <div className="mb-4 space-y-1 text-sm">
-                <p>
-                  <span className="font-medium text-slate-800">
-                    From:
-                  </span>{" "}
-                  {selected.from}{" "}
-                  <span className="text-muted-foreground">
-                    &lt;{selected.fromEmail}&gt;
-                  </span>
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  Received: {selected.receivedAt}
-                </p>
-              </div>
-
-              <div className="rounded-lg border bg-background px-3 py-3 text-sm whitespace-pre-line">
-                {selected.body}
-              </div>
-
-              <div className="mt-4 flex gap-2">
+        {loading ? (
+          <p className="text-sm text-muted-foreground">Loading…</p>
+        ) : error ? (
+          <p className="text-sm text-destructive">{error}</p>
+        ) : filtered.length === 0 ? (
+          <p className="text-sm text-muted-foreground">
+            No messages yet. Start by creating a new message and linking it to
+            a case.
+          </p>
+        ) : (
+          <div className="space-y-3">
+            {filtered.map((m) => {
+              const c = m.caseId ? caseById.get(m.caseId) : undefined;
+              return (
                 <button
+                  key={m.id}
                   type="button"
-                  className="inline-flex rounded-md bg-sky-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-sky-700"
+                  onClick={() => handleRowClick(m.id)}
+                  className="flex w-full flex-col gap-1 rounded-lg border bg-background p-3 text-left text-xs hover:bg-accent md:flex-row md:items-center md:justify-between"
                 >
-                  Reply (open email)
+                  <div className="space-y-0.5">
+                    <p className="text-sm font-medium">{m.subject}</p>
+                    <p className="text-muted-foreground line-clamp-2">
+                      {m.body}
+                    </p>
+                    {c && (
+                      <p className="text-[11px] text-muted-foreground">
+                        Case: {c.matter} ({c.caseNumber})
+                      </p>
+                    )}
+                  </div>
+                  <div className="flex flex-col items-start gap-1 md:items-end">
+                    <span className="text-[11px] text-muted-foreground">
+                      {formatDate(m.createdAt)}
+                    </span>
+                  </div>
                 </button>
-                <button
-                  type="button"
-                  className="inline-flex rounded-md border px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50"
-                  onClick={() =>
-                    setMessages((prev) =>
-                      prev.map((m) =>
-                        m.id === selected.id
-                          ? {
-                              ...m,
-                              status:
-                                m.status === "archived"
-                                  ? "read"
-                                  : "archived",
-                            }
-                          : m
-                      )
-                    )
-                  }
-                >
-                  {selected.status === "archived"
-                    ? "Move out of archive"
-                    : "Archive"}
-                </button>
-              </div>
-            </>
-          ) : (
-            <p className="text-sm text-muted-foreground">
-              Select a message from the left to view details.
-            </p>
-          )}
-        </div>
+              );
+            })}
+          </div>
+        )}
       </div>
     </div>
   );
