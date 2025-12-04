@@ -26,6 +26,19 @@ type Message = {
   createdAt: string;
 };
 
+function buildSubjectForCase(c: MediationCase): string {
+  if (c.matter && c.caseNumber) {
+    return `Notes for ${c.matter} (${c.caseNumber})`;
+  }
+  if (c.matter) {
+    return `Notes for ${c.matter}`;
+  }
+  if (c.caseNumber) {
+    return `Notes for case ${c.caseNumber}`;
+  }
+  return "Case notes";
+}
+
 export default function MessagesNewClient() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -38,6 +51,11 @@ export default function MessagesNewClient() {
   const [caseId, setCaseId] = useState<string | "">(preselectedCaseId || "");
   const [subject, setSubject] = useState("");
   const [body, setBody] = useState("");
+
+  // Track if the user has manually edited these fields,
+  // so we don't overwrite their typing when auto-filling.
+  const [subjectDirty, setSubjectDirty] = useState(false);
+  const [bodyDirty, setBodyDirty] = useState(false);
 
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -65,6 +83,33 @@ export default function MessagesNewClient() {
 
     loadCases();
   }, []);
+
+  // Option C1, C3, C4:
+  // Auto-fill subject and body based on selected case,
+  // but only if the user hasn't started typing yet (not "dirty").
+  useEffect(() => {
+    if (!caseId) return;
+    if (!cases || cases.length === 0) return;
+
+    const selected = cases.find((c) => c.id === caseId);
+    if (!selected) return;
+
+    // Subject auto-fill: only if user hasn't edited and subject is empty.
+    if (!subjectDirty && subject.trim() === "") {
+      setSubject(buildSubjectForCase(selected));
+    }
+
+    // Body auto-fill: only if user hasn't edited and body is empty,
+    // and the case has notes we can use as a starting point.
+    if (
+      !bodyDirty &&
+      body.trim() === "" &&
+      selected.notes &&
+      selected.notes.trim() !== ""
+    ) {
+      setBody(selected.notes);
+    }
+  }, [caseId, cases, subject, subjectDirty, body, bodyDirty]);
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -139,7 +184,10 @@ export default function MessagesNewClient() {
               <input
                 type="text"
                 value={subject}
-                onChange={(e) => setSubject(e.target.value)}
+                onChange={(e) => {
+                  setSubject(e.target.value);
+                  if (!subjectDirty) setSubjectDirty(true);
+                }}
                 className="w-full rounded-md border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 placeholder="Example: Prep notes for Johnson / Lee mediation"
               />
@@ -151,7 +199,10 @@ export default function MessagesNewClient() {
               </label>
               <textarea
                 value={body}
-                onChange={(e) => setBody(e.target.value)}
+                onChange={(e) => {
+                  setBody(e.target.value);
+                  if (!bodyDirty) setBodyDirty(true);
+                }}
                 rows={8}
                 className="w-full rounded-md border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 placeholder="Internal note, safety concerns, what to cover in the next session, etc."
@@ -176,7 +227,11 @@ export default function MessagesNewClient() {
               ) : (
                 <select
                   value={caseId}
-                  onChange={(e) => setCaseId(e.target.value)}
+                  onChange={(e) => {
+                    setCaseId(e.target.value);
+                    // We intentionally do NOT reset subject/body or dirty flags here.
+                    // The effect above will auto-fill if fields are still clean.
+                  }}
                   className="w-full rounded-md border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 >
                   <option value="">No case linked</option>
