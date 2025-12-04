@@ -27,12 +27,9 @@ type MediationSession = {
   completed: boolean;
 };
 
-type Message = {
-  id: string;
-  caseId: string | null;
-  subject: string;
-  body: string;
-  createdAt: string;
+type UserSettings = {
+  defaultHourlyRate: number | null;
+  defaultSessionDuration: number | null;
 };
 
 function formatDate(value?: string | null) {
@@ -76,11 +73,6 @@ export default function CaseDetailPage() {
   const [loadingSessions, setLoadingSessions] = useState(true);
   const [sessionsError, setSessionsError] = useState<string | null>(null);
 
-  // Messages state (for this case)
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [loadingMessages, setLoadingMessages] = useState(true);
-  const [messagesError, setMessagesError] = useState<string | null>(null);
-
   // New session form
   const [newSessionDate, setNewSessionDate] = useState("");
   const [newSessionDuration, setNewSessionDuration] = useState("1.0");
@@ -90,15 +82,23 @@ export default function CaseDetailPage() {
   const [newSessionError, setNewSessionError] = useState<string | null>(null);
 
   // Invoice-from-case state
-  const [invoiceRate, setInvoiceRate] = useState("200"); // default hourly rate
+  const [invoiceRate, setInvoiceRate] = useState("200"); // will be overridden by Settings if present
   const [creatingInvoice, setCreatingInvoice] = useState(false);
   const [invoiceError, setInvoiceError] = useState<string | null>(null);
+
+  // Settings for auto-fill
+  const [settings, setSettings] = useState<UserSettings | null>(null);
+  const [settingsLoading, setSettingsLoading] = useState(true);
+  const [settingsError, setSettingsError] = useState<string | null>(null);
+  const [initializedFromSettings, setInitializedFromSettings] =
+    useState(false);
 
   // Sum of completed session hours on this case
   const completedHours = sessions
     .filter((s) => s.completed)
     .reduce((sum, s) => sum + (s.durationHours || 0), 0);
 
+  // Load case details
   useEffect(() => {
     if (!caseId) return;
 
@@ -130,6 +130,7 @@ export default function CaseDetailPage() {
     loadCase();
   }, [caseId]);
 
+  // Load sessions
   useEffect(() => {
     if (!caseId) return;
 
@@ -156,31 +157,63 @@ export default function CaseDetailPage() {
     loadSessions();
   }, [caseId]);
 
+  // Load user settings and initialize defaults (once)
   useEffect(() => {
-    if (!caseId) return;
-
-    async function loadMessages() {
+    async function loadSettings() {
       try {
-        setLoadingMessages(true);
-        setMessagesError(null);
+        setSettingsLoading(true);
+        setSettingsError(null);
 
-        const res = await fetch(`/api/messages?caseId=${caseId}`);
+        const res = await fetch("/api/user-settings");
         if (!res.ok) {
-          throw new Error("Failed to load messages");
+          throw new Error("Failed to load settings");
         }
 
-        const data = (await res.json()) as Message[];
-        setMessages(data);
+        const data = await res.json();
+        const parsed: UserSettings = {
+          defaultHourlyRate:
+            data && typeof data.defaultHourlyRate === "number"
+              ? data.defaultHourlyRate
+              : data && data.defaultHourlyRate != null
+              ? Number(data.defaultHourlyRate)
+              : null,
+          defaultSessionDuration:
+            data && typeof data.defaultSessionDuration === "number"
+              ? data.defaultSessionDuration
+              : data && data.defaultSessionDuration != null
+              ? Number(data.defaultSessionDuration)
+              : null,
+        };
+
+        setSettings(parsed);
+
+        // Only apply defaults the first time we load settings
+        if (!initializedFromSettings) {
+          if (
+            parsed.defaultHourlyRate != null &&
+            !Number.isNaN(parsed.defaultHourlyRate)
+          ) {
+            setInvoiceRate(String(parsed.defaultHourlyRate));
+          }
+          if (
+            parsed.defaultSessionDuration != null &&
+            !Number.isNaN(parsed.defaultSessionDuration)
+          ) {
+            setNewSessionDuration(String(parsed.defaultSessionDuration));
+          }
+          setInitializedFromSettings(true);
+        }
       } catch (err: any) {
-        console.error("Error loading messages for case:", err);
-        setMessagesError(err?.message ?? "Failed to load messages");
+        console.error("Error loading settings in CaseDetailPage:", err);
+        setSettingsError(err?.message ?? "Failed to load settings");
       } finally {
-        setLoadingMessages(false);
+        setSettingsLoading(false);
       }
     }
 
-    loadMessages();
-  }, [caseId]);
+    loadSettings();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // we only want to run this once on mount for defaults
 
   async function handleSaveCase() {
     if (!caseId) return;
@@ -250,9 +283,17 @@ export default function CaseDetailPage() {
       // Prepend new session to the list
       setSessions((prev) => [created, ...prev]);
 
-      // Reset form
+      // Reset form (but keep default duration from Settings if we have one)
       setNewSessionDate("");
-      setNewSessionDuration("1.0");
+      if (
+        settings &&
+        settings.defaultSessionDuration != null &&
+        !Number.isNaN(settings.defaultSessionDuration)
+      ) {
+        setNewSessionDuration(String(settings.defaultSessionDuration));
+      } else {
+        setNewSessionDuration("1.0");
+      }
       setNewSessionNotes("");
       setNewSessionCompleted(false);
     } catch (err: any) {
@@ -352,6 +393,16 @@ export default function CaseDetailPage() {
             <p className="text-sm text-muted-foreground">
               Case ID: {caseData.caseNumber}
             </p>
+            {settingsLoading && (
+              <p className="mt-1 text-[11px] text-muted-foreground">
+                Loading your default billing settings…
+              </p>
+            )}
+            {settingsError && (
+              <p className="mt-1 text-[11px] text-destructive">
+                {settingsError}
+              </p>
+            )}
           </div>
 
           <div className="flex flex-wrap items-center gap-2 text-xs">
@@ -371,7 +422,7 @@ export default function CaseDetailPage() {
 
       {/* Main layout */}
       <div className="grid gap-4 md:grid-cols-3">
-        {/* Left column: case info & notes & sessions & messages */}
+        {/* Left column: case info & notes & sessions */}
         <div className="md:col-span-2 space-y-4">
           {/* Case info */}
           <div className="rounded-xl border bg-card p-4 shadow-sm">
@@ -501,6 +552,13 @@ export default function CaseDetailPage() {
                     onChange={(e) => setNewSessionDuration(e.target.value)}
                     className="w-full rounded-md border bg-card px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                   />
+                  {settings &&
+                    settings.defaultSessionDuration != null && (
+                      <p className="mt-1 text-[11px] text-muted-foreground">
+                        Pre-filled from your default session duration in
+                        Settings. Adjust as needed before saving.
+                      </p>
+                    )}
                 </div>
               </div>
 
@@ -545,54 +603,6 @@ export default function CaseDetailPage() {
                 </p>
               )}
             </form>
-          </div>
-
-          {/* Messages for this case */}
-          <div className="rounded-xl border bg-card p-4 shadow-sm space-y-3">
-            <div className="flex items-center justify-between">
-              <h2 className="text-sm font-medium">Messages for this case</h2>
-              <Link
-                href={`/messages/new?caseId=${caseData.id}`}
-                className="text-[11px] font-medium text-blue-600 hover:underline"
-              >
-                + New message
-              </Link>
-            </div>
-
-            {loadingMessages ? (
-              <p className="text-sm text-muted-foreground">
-                Loading messages…
-              </p>
-            ) : messagesError ? (
-              <p className="text-sm text-destructive">{messagesError}</p>
-            ) : messages.length === 0 ? (
-              <p className="text-sm text-muted-foreground">
-                No messages linked to this case yet. Create one to track
-                important notes or communications.
-              </p>
-            ) : (
-              <div className="space-y-2">
-                {messages.map((m) => (
-                  <Link
-                    key={m.id}
-                    href={`/messages/${m.id}`}
-                    className="flex flex-col gap-1 rounded-md border bg-background p-2 text-xs hover:bg-accent"
-                  >
-                    <div className="flex items-center justify-between gap-2">
-                      <p className="font-medium line-clamp-1">
-                        {m.subject}
-                      </p>
-                      <span className="text-[11px] text-muted-foreground">
-                        {formatDate(m.createdAt)}
-                      </span>
-                    </div>
-                    <p className="text-[11px] text-muted-foreground line-clamp-2">
-                      {m.body}
-                    </p>
-                  </Link>
-                ))}
-              </div>
-            )}
           </div>
         </div>
 
@@ -657,6 +667,13 @@ export default function CaseDetailPage() {
                   onChange={(e) => setInvoiceRate(e.target.value)}
                   className="w-full rounded-md border bg-background px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 />
+                {settings &&
+                  settings.defaultHourlyRate != null && (
+                    <p className="mt-1 text-[11px] text-muted-foreground">
+                      Pre-filled from your default hourly rate in Settings.
+                      You can adjust this before creating the invoice.
+                    </p>
+                  )}
               </div>
 
               <button
@@ -670,14 +687,6 @@ export default function CaseDetailPage() {
                   : "Create invoice from this case"}
               </button>
 
-              {/* Existing “New message about this case” button on the right */}
-              <Link
-                href={`/messages/new?caseId=${caseData.id}`}
-                className="mt-2 block w-full rounded-md border px-3 py-2 text-center text-xs font-medium hover:bg-accent"
-              >
-                New message about this case
-              </Link>
-
               {invoiceError && (
                 <p className="text-xs text-destructive">{invoiceError}</p>
               )}
@@ -685,7 +694,8 @@ export default function CaseDetailPage() {
               <p className="text-[11px] text-muted-foreground">
                 We&apos;ll create a Draft invoice in Billing &amp; Courts
                 using the case details and completed session hours. You can
-                adjust hours and rate before sending.
+                review and adjust all numbers before sending anything to
+                clients or court.
               </p>
             </div>
           </div>
@@ -693,9 +703,9 @@ export default function CaseDetailPage() {
           <div className="rounded-xl border bg-card p-4 text-xs text-muted-foreground shadow-sm">
             <p className="font-medium mb-1">What&apos;s next?</p>
             <p>
-              Now that cases, sessions, invoices, and messages are connected,
-              we can move on to Clients and Settings to finish your production
-              flow.
+              Now that cases, sessions, and invoices are connected and use
+              your default settings, you can move on to county reports and
+              fine-tuning your billing workflow.
             </p>
           </div>
         </div>
