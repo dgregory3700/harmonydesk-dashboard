@@ -24,10 +24,15 @@ type NewInvoiceForm = {
   rate: string;
 };
 
+type UserSettings = {
+  defaultHourlyRate: number | null;
+};
+
 export default function BillingOverview() {
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
   const [formOpen, setFormOpen] = useState(false);
   const [newInvoice, setNewInvoice] = useState<NewInvoiceForm>({
     caseNumber: "",
@@ -36,6 +41,13 @@ export default function BillingOverview() {
     hours: "",
     rate: "",
   });
+
+  // Settings (for auto-fill)
+  const [settings, setSettings] = useState<UserSettings | null>(null);
+  const [settingsLoading, setSettingsLoading] = useState(true);
+  const [settingsError, setSettingsError] = useState<string | null>(null);
+  const [defaultRateFromSettings, setDefaultRateFromSettings] =
+    useState<string>("");
 
   // Load invoices from API (Supabase-backed)
   useEffect(() => {
@@ -58,6 +70,39 @@ export default function BillingOverview() {
       }
     }
     loadInvoices();
+  }, []);
+
+  // Load user settings to get defaultHourlyRate
+  useEffect(() => {
+    async function loadSettings() {
+      try {
+        setSettingsLoading(true);
+        setSettingsError(null);
+        const res = await fetch("/api/user-settings");
+        if (!res.ok) {
+          throw new Error("Failed to load settings");
+        }
+        const data = await res.json();
+        const parsed: UserSettings = {
+          defaultHourlyRate:
+            data && typeof data.defaultHourlyRate === "number"
+              ? data.defaultHourlyRate
+              : data && data.defaultHourlyRate != null
+              ? Number(data.defaultHourlyRate)
+              : null,
+        };
+        setSettings(parsed);
+        if (parsed.defaultHourlyRate != null) {
+          setDefaultRateFromSettings(String(parsed.defaultHourlyRate));
+        }
+      } catch (err: any) {
+        console.error("Error loading settings in BillingOverview:", err);
+        setSettingsError(err?.message ?? "Failed to load settings");
+      } finally {
+        setSettingsLoading(false);
+      }
+    }
+    loadSettings();
   }, []);
 
   // Derived values
@@ -135,6 +180,14 @@ export default function BillingOverview() {
 
   async function handleStatusChange(id: string, status: InvoiceStatus) {
     try {
+      // Safety confirmation when "sending out" an invoice
+      if (status === "Sent") {
+        const ok = window.confirm(
+          "Before marking this invoice as Sent, please double-check the case number, parties, hours, rate, due date, and billing contact. Continue?"
+        );
+        if (!ok) return;
+      }
+
       const res = await fetch(`/api/invoices/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -156,7 +209,7 @@ export default function BillingOverview() {
     }
   }
 
-  // 🗑 NEW: delete invoice
+  // 🗑 delete invoice
   async function handleDeleteInvoice(id: string) {
     const confirmed = window.confirm(
       "Delete this invoice? This action cannot be undone."
@@ -173,7 +226,6 @@ export default function BillingOverview() {
         throw new Error(data.error || "Failed to delete invoice");
       }
 
-      // Remove from local state so it disappears immediately
       setInvoices((prev) => prev.filter((inv) => inv.id !== id));
     } catch (err: any) {
       console.error(err);
@@ -183,6 +235,11 @@ export default function BillingOverview() {
 
   function downloadKingCountyCsv() {
     if (countyInvoices.length === 0) return;
+
+    const ok = window.confirm(
+      "Before generating this county CSV report, please double-check each invoice's case number, parties, hours, rate, and due date. Continue?"
+    );
+    if (!ok) return;
 
     const header = ["Case Number", "Matter", "Bill To", "Hours", "Rate", "Total"];
     const rows = countyInvoices.map((inv) => [
@@ -213,6 +270,11 @@ export default function BillingOverview() {
 
   function downloadPierceCountyPdf() {
     if (countyInvoices.length === 0) return;
+
+    const ok = window.confirm(
+      "Before generating this county PDF report, please double-check each invoice's case number, parties, hours, rate, and due date. Continue?"
+    );
+    if (!ok) return;
 
     const doc = new jsPDF("landscape", "mm", "letter");
     const marginLeft = 10;
@@ -297,6 +359,16 @@ export default function BillingOverview() {
           <p className="text-sm text-slate-600">
             Track mediation sessions, invoices, and county reports.
           </p>
+          {settingsLoading && (
+            <p className="mt-1 text-[11px] text-slate-500">
+              Loading your billing defaults…
+            </p>
+          )}
+          {settingsError && (
+            <p className="mt-1 text-[11px] text-red-500">
+              {settingsError}
+            </p>
+          )}
         </div>
         <div className="text-right">
           <p className="text-xs text-slate-500">Draft total</p>
@@ -324,7 +396,19 @@ export default function BillingOverview() {
           <button
             type="button"
             className="rounded-lg border bg-white px-3 py-1 text-xs font-medium hover:bg-slate-50"
-            onClick={() => setFormOpen((v) => !v)}
+            onClick={() =>
+              setFormOpen((prev) => {
+                const next = !prev;
+                // When opening the form, auto-fill rate from Settings if empty
+                if (!prev && !newInvoice.rate && defaultRateFromSettings) {
+                  setNewInvoice((current) => ({
+                    ...current,
+                    rate: current.rate || defaultRateFromSettings,
+                  }));
+                }
+                return next;
+              })
+            }
           >
             {formOpen ? "Close form" : "New invoice"}
           </button>
@@ -405,6 +489,12 @@ export default function BillingOverview() {
                 }
                 required
               />
+              {defaultRateFromSettings && (
+                <p className="mt-1 text-[11px] text-slate-500">
+                  Pre-filled from your default hourly rate in Settings.
+                  Please review before sending to clients or court.
+                </p>
+              )}
             </div>
             <div className="md:col-span-3 flex items-end">
               <button
