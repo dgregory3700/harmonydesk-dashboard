@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 
 type CaseStatus = "Open" | "Upcoming" | "Closed";
+type MessageDirection = "internal" | "email_outbound";
 
 type MediationCase = {
   id: string;
@@ -24,6 +25,12 @@ type Message = {
   subject: string;
   body: string;
   createdAt: string;
+  // Optional future fields; not required for redirect
+  direction?: MessageDirection;
+  to_emails?: string | null;
+  from_email?: string | null;
+  sent_at?: string | null;
+  email_status?: "pending" | "sent" | "failed" | null;
 };
 
 function buildSubjectForCase(c: MediationCase): string {
@@ -37,6 +44,14 @@ function buildSubjectForCase(c: MediationCase): string {
     return `Notes for case ${c.caseNumber}`;
   }
   return "Case notes";
+}
+
+// Very simple email validation for UX (not bulletproof, just sanity check)
+function isValidEmail(value: string): boolean {
+  const trimmed = value.trim();
+  if (!trimmed) return false;
+  // basic pattern: something@something.something
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed);
 }
 
 export default function MessagesNewClient() {
@@ -56,6 +71,11 @@ export default function MessagesNewClient() {
   // so we don't overwrite their typing when auto-filling.
   const [subjectDirty, setSubjectDirty] = useState(false);
   const [bodyDirty, setBodyDirty] = useState(false);
+
+  // Email integration controls
+  const [alsoSendAsEmail, setAlsoSendAsEmail] = useState(false);
+  const [toEmails, setToEmails] = useState("");
+  const [emailFieldError, setEmailFieldError] = useState<string | null>(null);
 
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -118,12 +138,51 @@ export default function MessagesNewClient() {
     try {
       setSubmitting(true);
       setError(null);
+      setEmailFieldError(null);
 
       if (!subject.trim() || !body.trim()) {
         setError("Subject and message body are required.");
         setSubmitting(false);
         return;
       }
+
+      let parsedToEmails: string[] = [];
+
+      if (alsoSendAsEmail) {
+        if (!toEmails.trim()) {
+          setEmailFieldError(
+            "Please enter at least one recipient email address."
+          );
+          setSubmitting(false);
+          return;
+        }
+
+        parsedToEmails = toEmails
+          .split(/[,\s]+/)
+          .map((v) => v.trim())
+          .filter((v) => v.length > 0);
+
+        if (parsedToEmails.length === 0) {
+          setEmailFieldError(
+            "Please enter at least one valid email address."
+          );
+          setSubmitting(false);
+          return;
+        }
+
+        const invalid = parsedToEmails.find((addr) => !isValidEmail(addr));
+        if (invalid) {
+          setEmailFieldError(
+            `This doesn't look like a valid email: ${invalid}`
+          );
+          setSubmitting(false);
+          return;
+        }
+      }
+
+      const direction: MessageDirection = alsoSendAsEmail
+        ? "email_outbound"
+        : "internal";
 
       const res = await fetch("/api/messages", {
         method: "POST",
@@ -132,6 +191,10 @@ export default function MessagesNewClient() {
           subject: subject.trim(),
           body: body.trim(),
           caseId: caseId || null,
+          direction,
+          // These are for the upcoming email integration on the backend.
+          sendAsEmail: alsoSendAsEmail,
+          toEmails: parsedToEmails,
         }),
       });
 
@@ -211,7 +274,7 @@ export default function MessagesNewClient() {
           </div>
         </div>
 
-        {/* Right: case link & actions */}
+        {/* Right: case link, email options & actions */}
         <div className="space-y-4">
           <div className="rounded-xl border bg-card p-4 shadow-sm space-y-3">
             <div className="space-y-1">
@@ -244,6 +307,43 @@ export default function MessagesNewClient() {
               )}
             </div>
 
+            {/* Email integration controls */}
+            <div className="pt-2 border-t border-border space-y-2">
+              <label className="inline-flex items-center gap-2 text-xs text-muted-foreground">
+                <input
+                  type="checkbox"
+                  checked={alsoSendAsEmail}
+                  onChange={(e) => setAlsoSendAsEmail(e.target.checked)}
+                  className="h-3 w-3 rounded border"
+                />
+                <span>Also send as email</span>
+              </label>
+
+              {alsoSendAsEmail && (
+                <div className="space-y-1">
+                  <label className="block text-[11px] font-medium text-muted-foreground">
+                    To (comma separated)
+                  </label>
+                  <input
+                    type="text"
+                    value={toEmails}
+                    onChange={(e) => setToEmails(e.target.value)}
+                    className="w-full rounded-md border bg-background px-3 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    placeholder="party1@example.com, party2@example.com"
+                  />
+                  <p className="text-[10px] text-muted-foreground">
+                    Later we can auto-fill this from case contacts. For now you
+                    can type one or more email addresses.
+                  </p>
+                  {emailFieldError && (
+                    <p className="text-[11px] text-destructive">
+                      {emailFieldError}
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
+
             <button
               type="submit"
               disabled={submitting}
@@ -257,8 +357,9 @@ export default function MessagesNewClient() {
             )}
 
             <p className="text-[11px] text-muted-foreground">
-              Messages are private to you for now. Later we can sync them
-              with email history.
+              Messages are private to you for now. When email sending is
+              enabled, you&apos;ll be able to send these notes directly to
+              parties while still keeping an internal record.
             </p>
           </div>
         </div>
