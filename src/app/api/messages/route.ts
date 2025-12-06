@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { supabaseAdmin } from "@/lib/supabaseServer";
 
+export type MessageDirection = "internal" | "email_outbound";
+
 export type Message = {
   id: string;
   userEmail: string;
@@ -9,6 +11,13 @@ export type Message = {
   subject: string;
   body: string;
   createdAt: string;
+
+  // Email-related fields (optional for existing data)
+  direction: MessageDirection;
+  to_emails: string | null;
+  from_email: string | null;
+  sent_at: string | null;
+  email_status: "pending" | "sent" | "failed" | null;
 };
 
 // NOTE: cookies() is async in recent Next.js
@@ -42,6 +51,14 @@ function mapRowToMessage(row: any): Message {
     subject: row.subject,
     body: row.body,
     createdAt: row.created_at,
+
+    // Email-related fields with safe fallbacks for older rows
+    direction: (row.direction as MessageDirection) ?? "internal",
+    to_emails: row.to_emails ?? null,
+    from_email: row.from_email ?? null,
+    sent_at: row.sent_at ?? null,
+    email_status:
+      (row.email_status as "pending" | "sent" | "failed" | null) ?? null,
   };
 }
 
@@ -109,14 +126,37 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // These fields are coming from the New Message form
+    // via MessagesNewClient.tsx
+    const sendAsEmail = !!body.sendAsEmail;
+    const directionRaw = body.direction as MessageDirection | undefined;
+    const direction: MessageDirection =
+      directionRaw === "email_outbound" ? "email_outbound" : "internal";
+
+    const toEmailsArray: string[] = Array.isArray(body.toEmails)
+      ? body.toEmails
+      : [];
+
+    // Store as comma-separated string for now; easy to query and display.
+    const toEmailsText =
+      toEmailsArray.length > 0 ? toEmailsArray.join(",") : null;
+
+    const insertPayload: any = {
+      user_email: userEmail,
+      case_id: caseId,
+      subject,
+      body: messageBody,
+      direction,
+      to_emails: toEmailsText,
+      // These can be used later once we wire actual sending:
+      // from_email: null,
+      // sent_at: null,
+      email_status: sendAsEmail ? "pending" : null,
+    };
+
     const { data, error } = await supabaseAdmin
       .from("messages")
-      .insert({
-        user_email: userEmail,
-        case_id: caseId,
-        subject,
-        body: messageBody,
-      })
+      .insert(insertPayload)
       .select("*")
       .single();
 
