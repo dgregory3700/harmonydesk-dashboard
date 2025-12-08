@@ -11,16 +11,22 @@ export type Message = {
   subject: string;
   body: string;
   createdAt: string;
+
+  // Email-related fields (optional for existing data)
   direction: MessageDirection;
-  toEmails: string[] | null;
-  fromEmail: string | null;
-  sentAt: string | null;
-  emailStatus: "pending" | "sent" | "failed" | null;
+  to_emails: string | null;
+  from_email: string | null;
+  sent_at: string | null;
+  email_status: "pending" | "sent" | "failed" | null;
 };
 
 // NOTE: cookies() is async in recent Next.js
 async function getUserEmail() {
   const cookieStore = await cookies();
+
+  // Debug: log everything we see
+  const all = cookieStore.getAll();
+  console.log("cookies seen in /api/messages:", all);
 
   const candidate =
     cookieStore.get("hd_user_email") ||
@@ -38,15 +44,6 @@ async function getUserEmail() {
 }
 
 function mapRowToMessage(row: any): Message {
-  const toRaw = row.to_emails as string | null;
-  const toEmails =
-    toRaw && typeof toRaw === "string"
-      ? toRaw
-          .split(",")
-          .map((s) => s.trim())
-          .filter(Boolean)
-      : null;
-
   return {
     id: row.id,
     userEmail: row.user_email,
@@ -54,11 +51,14 @@ function mapRowToMessage(row: any): Message {
     subject: row.subject,
     body: row.body,
     createdAt: row.created_at,
-    direction: (row.direction as MessageDirection) || "internal",
-    toEmails,
-    fromEmail: row.from_email ?? null,
-    sentAt: row.sent_at ?? null,
-    emailStatus: (row.email_status as any) ?? null,
+
+    // Email-related fields with safe fallbacks for older rows
+    direction: (row.direction as MessageDirection) ?? "internal",
+    to_emails: row.to_emails ?? null,
+    from_email: row.from_email ?? null,
+    sent_at: row.sent_at ?? null,
+    email_status:
+      (row.email_status as "pending" | "sent" | "failed" | null) ?? null,
   };
 }
 
@@ -119,10 +119,6 @@ export async function POST(req: NextRequest) {
         ? String(body.caseId).trim()
         : null;
 
-    const sendAsEmail = !!body.sendAsEmail;
-    const toEmailRaw = String(body.toEmail ?? "").trim();
-    const toEmail = sendAsEmail && toEmailRaw ? toEmailRaw : null;
-
     if (!subject || !messageBody) {
       return NextResponse.json(
         { error: "Subject and message body are required" },
@@ -130,92 +126,49 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    if (sendAsEmail && !toEmail) {
-      return NextResponse.json(
-        { error: "To email is required when sending as email" },
-        { status: 400 }
-      );
-    }
+    // These fields are coming from the New Message form
+    // via MessagesNewClient.tsx
+    const sendAsEmail = !!body.sendAsEmail;
+    const directionRaw = body.direction as MessageDirection | undefined;
+    const direction: MessageDirection =
+      directionRaw === "email_outbound" ? "email_outbound" : "internal";
 
-    const direction: MessageDirection = sendAsEmail
-      ? "email_outbound"
-      : "internal";
-    const to_emails = toEmail ? toEmail : null;
+    const toEmailsArray: string[] = Array.isArray(body.toEmails)
+      ? body.toEmails
+      : [];
 
-    // 1) Insert the message row
+    // Store as comma-separated string for now; easy to query and display.
+    const toEmailsText =
+      toEmailsArray.length > 0 ? toEmailsArray.join(",") : null;
+
+    const insertPayload: any = {
+      user_email: userEmail,
+      case_id: caseId,
+      subject,
+      body: messageBody,
+      direction,
+      to_emails: toEmailsText,
+      // These can be used later once we wire actual sending:
+      // from_email: null,
+      // sent_at: null,
+      email_status: sendAsEmail ? "pending" : null,
+    };
+
     const { data, error } = await supabaseAdmin
       .from("messages")
-      .insert({
-        user_email: userEmail,
-        case_id: caseId,
-        subject,
-        body: messageBody,
-        direction,
-        to_emails,
-        from_email: sendAsEmail ? userEmail : null,
-        email_status: sendAsEmail ? "pending" : null,
-      })
+      .insert(insertPayload)
       .select("*")
       .single();
 
     if (error || !data) {
-      console.error("Supabase POST /api/messages insert error:", error);
+      console.error("Supabase POST /api/messages error:", error);
       return NextResponse.json(
         { error: "Failed to create message" },
         { status: 500 }
       );
     }
 
-    const createdId = data.id as string;
-
-    // 2) Optionally send email via backend /email/send
-    if (sendAsEmail && toEmail) {
-      const emailEndpoint =
-        process.env.HD_EMAIL_API_URL ||
-        "https://api.harmonydesk.ai/email/send";
-
-      try {
-        const emailRes = await fetch(emailEndpoint, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            subject,
-            body: messageBody,
-            to: [toEmail],
-            caseId: createdId,
-          }),
-        });
-
-        if (!emailRes.ok) {
-          console.error("Email send failed with status:", emailRes.status);
-          await supabaseAdmin
-            .from("messages")
-            .update({ email_status: "failed" })
-            .eq("id", createdId);
-        } else {
-          await supabaseAdmin
-            .from("messages")
-            .update({
-              email_status: "sent",
-              sent_at: new Date().toISOString(),
-            })
-            .eq("id", createdId);
-        }
-      } catch (err) {
-        console.error("Error calling backend /email/send:", err);
-        await supabaseAdmin
-          .from("messages")
-          .update({ email_status: "failed" })
-          .eq("id", createdId);
-      }
-    }
-
-    const message = mapRowToMessage({
-      ...data,
-      email_status: sendAsEmail ? "sent" : data.email_status,
-      sent_at: sendAsEmail ? new Date().toISOString() : data.sent_at,
-    });
-
+    const message = mapRowToMessage(data);
     return NextResponse.json(message, { status: 201 });
   } catch (err) {
     console.error("Unexpected POST /api/messages error:", err);
