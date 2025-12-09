@@ -462,7 +462,7 @@ export default function CaseDetailPage() {
 
       {/* Main layout */}
       <div className="grid gap-4 md:grid-cols-3">
-        {/* Left column: case info & notes & sessions & messages */}
+        {/* Left column: case info, notes, sessions */}
         <div className="md:col-span-2 space-y-4">
           {/* Case info */}
           <div className="rounded-xl border bg-card p-4 shadow-sm">
@@ -502,70 +502,6 @@ export default function CaseDetailPage() {
               className="w-full rounded-md border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
               placeholder="Add notes about this case, agreements reached, follow-up items…"
             />
-          </div>
-
-          {/* Messages & notes linked to this case */}
-          <div className="rounded-xl border bg-card p-4 shadow-sm space-y-3">
-            <div className="flex items-center justify-between">
-              <h2 className="text-sm font-medium">Messages &amp; internal notes</h2>
-              <div className="flex gap-2">
-                <Link
-                  href={`/messages/new?caseId=${caseId}`}
-                  className="text-[11px] font-medium text-blue-600 hover:underline"
-                >
-                  Add message
-                </Link>
-                <Link
-                  href={`/messages?caseId=${caseId}`}
-                  className="text-[11px] text-muted-foreground hover:underline"
-                >
-                  View all
-                </Link>
-              </div>
-            </div>
-
-            {loadingMessages ? (
-              <p className="text-sm text-muted-foreground">
-                Loading messages…
-              </p>
-            ) : messagesError ? (
-              <p className="text-sm text-destructive">{messagesError}</p>
-            ) : messages.length === 0 ? (
-              <p className="text-sm text-muted-foreground">
-                No messages linked to this case yet. Use “Add message” to log
-                prep notes, safety concerns, or things to cover next time.
-              </p>
-            ) : (
-              <div className="space-y-2">
-                {messages.slice(0, 5).map((m) => (
-                  <Link
-                    key={m.id}
-                    href={`/messages/${m.id}`}
-                    className="block rounded-md border bg-background p-2 text-xs hover:bg-accent"
-                  >
-                    <div className="flex items-center justify-between gap-2">
-                      <p className="font-medium line-clamp-1">
-                        {m.subject || "Untitled message"}
-                      </p>
-                      <span className="text-[11px] text-muted-foreground">
-                        {formatDate(m.createdAt)}
-                      </span>
-                    </div>
-                    {m.body && (
-                      <p className="mt-0.5 text-[11px] text-muted-foreground line-clamp-2">
-                        {m.body}
-                      </p>
-                    )}
-                  </Link>
-                ))}
-                {messages.length > 5 && (
-                  <p className="text-[11px] text-muted-foreground">
-                    Showing the 5 most recent messages. Use “View all” to see
-                    the full history.
-                  </p>
-                )}
-              </div>
-            )}
           </div>
 
           {/* Session history */}
@@ -710,8 +646,9 @@ export default function CaseDetailPage() {
           </div>
         </div>
 
-        {/* Right column: actions */}
+        {/* Right column: actions + messages panel + helper text */}
         <div className="space-y-4">
+          {/* Actions */}
           <div className="rounded-xl border bg-card p-4 shadow-sm">
             <h2 className="text-sm font-medium mb-3">Actions</h2>
 
@@ -804,6 +741,73 @@ export default function CaseDetailPage() {
             </div>
           </div>
 
+          {/* Messages panel (now in right column) */}
+          <div className="rounded-xl border bg-card p-4 shadow-sm space-y-3">
+            <div className="flex items-center justify-between">
+              <h2 className="text-sm font-medium">
+                Messages &amp; internal notes
+              </h2>
+              <div className="flex gap-2">
+                <Link
+                  href={`/messages/new?caseId=${caseId}`}
+                  className="text-[11px] font-medium text-blue-600 hover:underline"
+                >
+                  Add message
+                </Link>
+                <Link
+                  href={`/messages?caseId=${caseId}`}
+                  className="text-[11px] text-muted-foreground hover:underline"
+                >
+                  View all
+                </Link>
+              </div>
+            </div>
+
+            {loadingMessages ? (
+              <p className="text-sm text-muted-foreground">
+                Loading messages…
+              </p>
+            ) : messagesError ? (
+              <p className="text-sm text-destructive">{messagesError}</p>
+            ) : messages.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                No messages linked to this case yet. Use “Add message” to log
+                prep notes, safety concerns, or things to cover next time.
+              </p>
+            ) : (
+              <div className="space-y-2 max-h-72 overflow-y-auto">
+                {messages.slice(0, 5).map((m) => (
+                  <Link
+                    key={m.id}
+                    href={`/messages/${m.id}`}
+                    className="block rounded-md border bg-background p-2 text-xs hover:bg-accent"
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="font-medium line-clamp-1">
+                        {m.subject || "Untitled message"}
+                      </p>
+                      <span className="text-[11px] text-muted-foreground">
+                        {formatDate(m.createdAt)}
+                      </span>
+                    </div>
+                    {m.body && (
+                      <p className="mt-0.5 text-[11px] text-muted-foreground line-clamp-2">
+                        {m.body}
+                      </p>
+                    )}
+                  </Link>
+                ))}
+                {messages.length > 5 && (
+                  <p className="text-[11px] text-muted-foreground">
+                    Showing the 5 most recent messages. Use “View all” to see
+                    the full history.
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Helper text */}
           <div className="rounded-xl border bg-card p-4 text-xs text-muted-foreground shadow-sm">
             <p className="font-medium mb-1">What&apos;s next?</p>
             <p>
