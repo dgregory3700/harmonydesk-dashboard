@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, Suspense, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 
@@ -25,7 +25,8 @@ type Message = {
   createdAt: string;
 };
 
-export default function NewMessagePage() {
+// Inner component that actually uses useSearchParams
+function NewMessagePageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const preselectedCaseId = searchParams.get("caseId"); // e.g. /messages/new?caseId=123
@@ -38,7 +39,7 @@ export default function NewMessagePage() {
   const [subject, setSubject] = useState("");
   const [body, setBody] = useState("");
 
-  // NEW: email options
+  // email options
   const [sendAsEmail, setSendAsEmail] = useState(false);
   const [toEmail, setToEmail] = useState("");
 
@@ -70,7 +71,7 @@ export default function NewMessagePage() {
     loadCases();
   }, []);
 
-  // 🔽 NEW: once cases are loaded, preselect from ?caseId=... if present
+  // 🔽 Preselect from ?caseId=... once cases are loaded
   useEffect(() => {
     if (!preselectedCaseId) return;
     if (!cases || cases.length === 0) return;
@@ -307,5 +308,20 @@ export default function NewMessagePage() {
         </div>
       </form>
     </div>
+  );
+}
+
+// Wrapper that provides the Suspense boundary required for useSearchParams
+export default function NewMessagePage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="space-y-6">
+          <div className="text-sm text-muted-foreground">Loading…</div>
+        </div>
+      }
+    >
+      <NewMessagePageInner />
+    </Suspense>
   );
 }
