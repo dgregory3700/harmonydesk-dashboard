@@ -27,6 +27,8 @@ type Message = {
 
 export default function NewMessagePage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const preselectedCaseId = searchParams.get("caseId"); // e.g. /messages/new?caseId=123
 
   const [cases, setCases] = useState<MediationCase[]>([]);
   const [loadingCases, setLoadingCases] = useState(true);
@@ -67,6 +69,20 @@ export default function NewMessagePage() {
 
     loadCases();
   }, []);
+
+  // 🔽 NEW: once cases are loaded, preselect from ?caseId=... if present
+  useEffect(() => {
+    if (!preselectedCaseId) return;
+    if (!cases || cases.length === 0) return;
+
+    setCaseId((current) => {
+      // don't override if user has already chosen something
+      if (current) return current;
+
+      const match = cases.find((c) => c.id === preselectedCaseId);
+      return match ? match.id : current;
+    });
+  }, [preselectedCaseId, cases]);
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
