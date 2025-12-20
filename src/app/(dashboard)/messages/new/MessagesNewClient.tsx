@@ -1,4 +1,3 @@
-// src/app/(dashboard)/messages/new/MessagesNewClient.tsx
 "use client";
 
 import { FormEvent, useEffect, useState } from "react";
@@ -25,7 +24,6 @@ type Message = {
   subject: string;
   body: string;
   createdAt: string;
-  // Optional future fields; not required for redirect
   direction?: MessageDirection;
   to_emails?: string | null;
   from_email?: string | null;
@@ -46,11 +44,10 @@ function buildSubjectForCase(c: MediationCase): string {
   return "Case notes";
 }
 
-// Very simple email validation for UX (not bulletproof, just sanity check)
+// Very simple email validation for UX
 function isValidEmail(value: string): boolean {
   const trimmed = value.trim();
   if (!trimmed) return false;
-  // basic pattern: something@something.something
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed);
 }
 
@@ -67,8 +64,7 @@ export default function MessagesNewClient() {
   const [subject, setSubject] = useState("");
   const [body, setBody] = useState("");
 
-  // Track if the user has manually edited these fields,
-  // so we don't overwrite their typing when auto-filling.
+  // Track if the user has manually edited these fields
   const [subjectDirty, setSubjectDirty] = useState(false);
   const [bodyDirty, setBodyDirty] = useState(false);
 
@@ -104,9 +100,7 @@ export default function MessagesNewClient() {
     loadCases();
   }, []);
 
-  // Option C1, C3, C4:
-  // Auto-fill subject and body based on selected case,
-  // but only if the user hasn't started typing yet (not "dirty").
+  // Auto-fill logic
   useEffect(() => {
     if (!caseId) return;
     if (!cases || cases.length === 0) return;
@@ -114,13 +108,12 @@ export default function MessagesNewClient() {
     const selected = cases.find((c) => c.id === caseId);
     if (!selected) return;
 
-    // Subject auto-fill: only if user hasn't edited and subject is empty.
+    // Subject auto-fill
     if (!subjectDirty && subject.trim() === "") {
       setSubject(buildSubjectForCase(selected));
     }
 
-    // Body auto-fill: only if user hasn't edited and body is empty,
-    // and the case has notes we can use as a starting point.
+    // Body auto-fill
     if (
       !bodyDirty &&
       body.trim() === "" &&
@@ -192,7 +185,6 @@ export default function MessagesNewClient() {
           body: body.trim(),
           caseId: caseId || null,
           direction,
-          // These are for the upcoming email integration on the backend.
           sendAsEmail: alsoSendAsEmail,
           toEmails: parsedToEmails,
         }),
@@ -204,7 +196,6 @@ export default function MessagesNewClient() {
       }
 
       const created = (await res.json()) as Message;
-
       router.push(`/messages/${created.id}`);
     } catch (err: any) {
       console.error("Error creating message:", err);
@@ -219,15 +210,15 @@ export default function MessagesNewClient() {
       <div className="flex flex-col gap-1">
         <Link
           href="/messages"
-          className="text-xs text-muted-foreground hover:underline"
+          className="text-xs text-slate-400 hover:text-slate-200 hover:underline transition-colors"
         >
           ← Back to messages
         </Link>
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">
+          <h1 className="text-2xl font-semibold tracking-tight text-slate-100">
             New message
           </h1>
-          <p className="text-sm text-muted-foreground">
+          <p className="text-sm text-slate-400">
             Add an internal note or message, optionally linked to a case.
           </p>
         </div>
@@ -239,9 +230,9 @@ export default function MessagesNewClient() {
       >
         {/* Left: message content */}
         <div className="md:col-span-2 space-y-4">
-          <div className="rounded-xl border bg-card p-4 shadow-sm space-y-3">
+          <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-4 shadow-sm space-y-3">
             <div className="space-y-1">
-              <label className="block text-xs font-medium text-muted-foreground">
+              <label className="block text-xs font-medium text-slate-400">
                 Subject *
               </label>
               <input
@@ -251,13 +242,13 @@ export default function MessagesNewClient() {
                   setSubject(e.target.value);
                   if (!subjectDirty) setSubjectDirty(true);
                 }}
-                className="w-full rounded-md border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                className="w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-200 placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
                 placeholder="Example: Prep notes for Johnson / Lee mediation"
               />
             </div>
 
             <div className="space-y-1">
-              <label className="block text-xs font-medium text-muted-foreground">
+              <label className="block text-xs font-medium text-slate-400">
                 Message *
               </label>
               <textarea
@@ -267,7 +258,7 @@ export default function MessagesNewClient() {
                   if (!bodyDirty) setBodyDirty(true);
                 }}
                 rows={8}
-                className="w-full rounded-md border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                className="w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-200 placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
                 placeholder="Internal note, safety concerns, what to cover in the next session, etc."
               />
             </div>
@@ -276,26 +267,25 @@ export default function MessagesNewClient() {
 
         {/* Right: case link, email options & actions */}
         <div className="space-y-4">
-          <div className="rounded-xl border bg-card p-4 shadow-sm space-y-3">
+          <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-4 shadow-sm space-y-3">
             <div className="space-y-1">
-              <label className="block text-xs font-medium text-muted-foreground">
+              <label className="block text-xs font-medium text-slate-400">
                 Link to case (optional)
               </label>
               {loadingCases ? (
-                <p className="text-xs text-muted-foreground">
+                <p className="text-xs text-slate-500">
                   Loading cases…
                 </p>
               ) : casesError ? (
-                <p className="text-xs text-destructive">{casesError}</p>
+                <p className="text-xs text-red-400">{casesError}</p>
               ) : (
                 <select
                   value={caseId}
                   onChange={(e) => {
                     setCaseId(e.target.value);
-                    // We intentionally do NOT reset subject/body or dirty flags here.
-                    // The effect above will auto-fill if fields are still clean.
+                    // Do not reset dirty flags so we don't wipe user work
                   }}
-                  className="w-full rounded-md border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  className="w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
                 >
                   <option value="">No case linked</option>
                   {cases.map((c) => (
@@ -308,35 +298,35 @@ export default function MessagesNewClient() {
             </div>
 
             {/* Email integration controls */}
-            <div className="pt-2 border-t border-border space-y-2">
-              <label className="inline-flex items-center gap-2 text-xs text-muted-foreground">
+            <div className="pt-2 border-t border-slate-800 space-y-2">
+              <label className="inline-flex items-center gap-2 text-xs text-slate-400 hover:text-slate-200 cursor-pointer">
                 <input
                   type="checkbox"
                   checked={alsoSendAsEmail}
                   onChange={(e) => setAlsoSendAsEmail(e.target.checked)}
-                  className="h-3 w-3 rounded border"
+                  className="h-3 w-3 rounded border border-slate-600 bg-slate-900 accent-sky-500"
                 />
                 <span>Also send as email</span>
               </label>
 
               {alsoSendAsEmail && (
                 <div className="space-y-1">
-                  <label className="block text-[11px] font-medium text-muted-foreground">
+                  <label className="block text-[11px] font-medium text-slate-400">
                     To (comma separated)
                   </label>
                   <input
                     type="text"
                     value={toEmails}
                     onChange={(e) => setToEmails(e.target.value)}
-                    className="w-full rounded-md border bg-background px-3 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    className="w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-1.5 text-xs text-slate-200 placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
                     placeholder="party1@example.com, party2@example.com"
                   />
-                  <p className="text-[10px] text-muted-foreground">
+                  <p className="text-[10px] text-slate-500">
                     Later we can auto-fill this from case contacts. For now you
                     can type one or more email addresses.
                   </p>
                   {emailFieldError && (
-                    <p className="text-[11px] text-destructive">
+                    <p className="text-[11px] text-red-400">
                       {emailFieldError}
                     </p>
                   )}
@@ -347,16 +337,16 @@ export default function MessagesNewClient() {
             <button
               type="submit"
               disabled={submitting}
-              className="w-full rounded-md bg-primary px-3 py-2 text-xs font-medium text-primary-foreground hover:opacity-90 disabled:opacity-60"
+              className="w-full rounded-md bg-sky-600 px-3 py-2 text-xs font-medium text-white hover:bg-sky-500 disabled:opacity-60 transition-colors"
             >
               {submitting ? "Saving…" : "Save message"}
             </button>
 
             {error && (
-              <p className="text-xs text-destructive">{error}</p>
+              <p className="text-xs text-red-400">{error}</p>
             )}
 
-            <p className="text-[11px] text-muted-foreground">
+            <p className="text-[11px] text-slate-500">
               Messages are private to you for now. When email sending is
               enabled, you&apos;ll be able to send these notes directly to
               parties while still keeping an internal record.
