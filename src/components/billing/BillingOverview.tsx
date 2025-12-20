@@ -333,39 +333,39 @@ export default function BillingOverview() {
       {/* Header + Draft total */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">
+          <h1 className="text-2xl font-semibold tracking-tight text-slate-100">
             Client billing
           </h1>
-          <p className="text-sm text-slate-600">
+          <p className="text-sm text-slate-400">
             Track mediation sessions, invoices, and county reports.
           </p>
         </div>
         <div className="text-right">
           <p className="text-xs text-slate-500">Draft total</p>
-          <p className="text-xl font-semibold">
+          <p className="text-xl font-semibold text-slate-100">
             ${draftTotal.toFixed(2)}
           </p>
         </div>
       </div>
 
       {loading && (
-        <p className="text-sm text-slate-600">
+        <p className="text-sm text-slate-500">
           Loading invoices…
         </p>
       )}
       {error && (
-        <p className="text-sm text-red-500">
+        <p className="text-sm text-red-400">
           {error}
         </p>
       )}
 
       {/* New invoice card */}
-      <div className="rounded-xl border bg-white p-4 shadow-sm">
+      <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-4 shadow-sm">
         <div className="flex items-center justify-between">
-          <h2 className="text-sm font-medium">New invoice</h2>
+          <h2 className="text-sm font-medium text-slate-200">New invoice</h2>
           <button
             type="button"
-            className="rounded-lg border bg-white px-3 py-1 text-xs font-medium hover:bg-slate-50"
+            className="rounded-lg border border-slate-700 bg-slate-800 px-3 py-1 text-xs font-medium text-slate-200 hover:bg-slate-700 transition-colors"
             onClick={() => setFormOpen((v) => !v)}
           >
             {formOpen ? "Close form" : "New invoice"}
@@ -378,11 +378,11 @@ export default function BillingOverview() {
             className="mt-4 grid gap-3 md:grid-cols-5"
           >
             <div className="md:col-span-1">
-              <label className="mb-1 block text-xs font-medium">
+              <label className="mb-1 block text-xs font-medium text-slate-400">
                 Case number
               </label>
               <input
-                className="w-full rounded-md border bg-white text-slate-900 px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                className="w-full rounded-md border border-slate-700 bg-slate-950 text-slate-200 px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500 placeholder-slate-600"
                 value={newInvoice.caseNumber}
                 onChange={(e) =>
                   handleFormChange("caseNumber", e.target.value)
@@ -391,11 +391,11 @@ export default function BillingOverview() {
               />
             </div>
             <div className="md:col-span-2">
-              <label className="mb-1 block text-xs font-medium">
+              <label className="mb-1 block text-xs font-medium text-slate-400">
                 Matter
               </label>
               <input
-                className="w-full rounded-md border bg-white text-slate-900 px-2 py-1 text-sm"
+                className="w-full rounded-md border border-slate-700 bg-slate-950 text-slate-200 px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
                 value={newInvoice.matter}
                 onChange={(e) =>
                   handleFormChange("matter", e.target.value)
@@ -404,11 +404,11 @@ export default function BillingOverview() {
               />
             </div>
             <div className="md:col-span-2">
-              <label className="mb-1 block text-xs font-medium">
+              <label className="mb-1 block text-xs font-medium text-slate-400">
                 Bill to / contact
               </label>
               <input
-                className="w-full rounded-md border bg-white text-slate-900 px-2 py-1 text-sm"
+                className="w-full rounded-md border border-slate-700 bg-slate-950 text-slate-200 px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
                 value={newInvoice.contact}
                 onChange={(e) =>
                   handleFormChange("contact", e.target.value)
@@ -417,14 +417,14 @@ export default function BillingOverview() {
               />
             </div>
             <div>
-              <label className="mb-1 block text-xs font-medium">
+              <label className="mb-1 block text-xs font-medium text-slate-400">
                 Hours
               </label>
               <input
                 type="number"
                 min="0"
                 step="0.1"
-                className="w-full rounded-md border bg-white text-slate-900 px-2 py-1 text-sm"
+                className="w-full rounded-md border border-slate-700 bg-slate-950 text-slate-200 px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
                 value={newInvoice.hours}
                 onChange={(e) =>
                   handleFormChange("hours", e.target.value)
@@ -433,14 +433,14 @@ export default function BillingOverview() {
               />
             </div>
             <div>
-              <label className="mb-1 block text-xs font-medium">
+              <label className="mb-1 block text-xs font-medium text-slate-400">
                 Rate ($/hr)
               </label>
               <input
                 type="number"
                 min="0"
                 step="1"
-                className="w-full rounded-md border bg-white text-slate-900 px-2 py-1 text-sm"
+                className="w-full rounded-md border border-slate-700 bg-slate-950 text-slate-200 px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
                 value={newInvoice.rate}
                 onChange={(e) =>
                   handleFormChange("rate", e.target.value)
@@ -451,7 +451,7 @@ export default function BillingOverview() {
             <div className="md:col-span-3 flex items-end">
               <button
                 type="submit"
-                className="inline-flex rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+                className="inline-flex rounded-md bg-sky-600 px-4 py-2 text-sm font-medium text-white hover:bg-sky-500 transition-colors"
               >
                 Add invoice
               </button>
@@ -461,10 +461,10 @@ export default function BillingOverview() {
       </div>
 
       {/* Invoice list */}
-      <div className="rounded-xl border bg-white p-4 shadow-sm">
-        <h2 className="mb-3 text-sm font-medium">Invoices</h2>
+      <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-4 shadow-sm">
+        <h2 className="mb-3 text-sm font-medium text-slate-300">Invoices</h2>
         {invoices.length === 0 && !loading ? (
-          <p className="text-sm text-slate-600">
+          <p className="text-sm text-slate-500">
             No invoices yet. Use “New invoice” to create your first one.
           </p>
         ) : (
@@ -474,26 +474,26 @@ export default function BillingOverview() {
               return (
                 <div
                   key={inv.id}
-                  className="flex flex-col gap-2 rounded-lg border bg-white p-3 md:flex-row md:items-center md:justify-between"
+                  className="flex flex-col gap-2 rounded-lg border border-slate-800 bg-slate-950 p-3 md:flex-row md:items-center md:justify-between"
                 >
                   <div>
-                    <p className="text-sm font-medium">{inv.matter}</p>
-                    <p className="text-xs text-slate-600">
+                    <p className="text-sm font-medium text-slate-200">{inv.matter}</p>
+                    <p className="text-xs text-slate-400">
                       {inv.caseNumber} • {inv.contact}
                     </p>
-                    <p className="text-xs text-slate-600">
+                    <p className="text-xs text-slate-400">
                       {inv.hours.toFixed(2)} hours @ ${inv.rate.toFixed(2)} •{" "}
-                      <span className="font-medium">
+                      <span className="font-medium text-slate-200">
                         ${total.toFixed(2)}
                       </span>
                     </p>
-                    <p className="text-xs text-slate-600">
+                    <p className="text-xs text-slate-500">
                       {inv.due}
                     </p>
                   </div>
                   <div className="flex items-center gap-2">
                     <select
-                      className="rounded-md border bg-white text-slate-900 px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      className="rounded-md border border-slate-700 bg-slate-900 text-slate-200 px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
                       value={inv.status}
                       onChange={(e) =>
                         handleStatusChange(
@@ -510,7 +510,7 @@ export default function BillingOverview() {
                     </select>
                     <button
                       type="button"
-                      className="rounded-md border bg-white px-3 py-1 text-xs font-medium hover:bg-slate-50"
+                      className="rounded-md border border-slate-700 bg-slate-800 px-3 py-1 text-xs font-medium text-slate-200 hover:bg-slate-700 transition-colors"
                       onClick={() => {
                         if (inv.status === "Draft") {
                           handlePrepareAndSend(inv);
@@ -527,7 +527,7 @@ export default function BillingOverview() {
                     {/* 🗑 Delete button */}
                     <button
                       type="button"
-                      className="rounded-md border border-red-200 bg-white px-3 py-1 text-xs font-medium text-red-600 hover:bg-red-50"
+                      className="rounded-md border border-slate-700 bg-transparent px-3 py-1 text-xs font-medium text-red-400 hover:bg-red-900/20 hover:border-red-800 transition-colors"
                       onClick={() => handleDeleteInvoice(inv.id)}
                     >
                       Delete
@@ -542,13 +542,13 @@ export default function BillingOverview() {
 
       {/* County month-end report */}
       {countyInvoices.length > 0 && (
-        <div className="rounded-xl border bg-white p-4 shadow-sm">
+        <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-4 shadow-sm">
           <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
             <div>
-              <h2 className="text-sm font-medium">
+              <h2 className="text-sm font-medium text-slate-200">
                 County month-end report preview
               </h2>
-              <p className="text-xs text-slate-600">
+              <p className="text-xs text-slate-400">
                 {countyTotals.cases} cases • {countyTotals.hours.toFixed(2)}{" "}
                 hours • ${countyTotals.amount.toFixed(2)}
               </p>
@@ -556,14 +556,14 @@ export default function BillingOverview() {
             <div className="flex gap-2">
               <button
                 type="button"
-                className="rounded-md border bg-white px-3 py-1 text-xs font-medium hover:bg-slate-50"
+                className="rounded-md border border-slate-700 bg-slate-800 px-3 py-1 text-xs font-medium text-slate-200 hover:bg-slate-700 transition-colors"
                 onClick={downloadKingCountyCsv}
               >
                 King County CSV
               </button>
               <button
                 type="button"
-                className="rounded-md border bg-white px-3 py-1 text-xs font-medium hover:bg-slate-50"
+                className="rounded-md border border-slate-700 bg-slate-800 px-3 py-1 text-xs font-medium text-slate-200 hover:bg-slate-700 transition-colors"
                 onClick={downloadPierceCountyPdf}
               >
                 Pierce County PDF
@@ -572,9 +572,9 @@ export default function BillingOverview() {
           </div>
 
           <div className="mt-4 overflow-x-auto">
-            <table className="min-w-full text-left text-xs">
+            <table className="min-w-full text-left text-xs text-slate-300">
               <thead>
-                <tr className="border-b bg-slate-100">
+                <tr className="border-b border-slate-800 bg-slate-800/50 text-slate-200">
                   <th className="px-2 py-1 font-medium">Case #</th>
                   <th className="px-2 py-1 font-medium">Matter</th>
                   <th className="px-2 py-1 font-medium">Bill to</th>
@@ -585,7 +585,7 @@ export default function BillingOverview() {
               </thead>
               <tbody>
                 {countyInvoices.map((inv) => (
-                  <tr key={inv.id} className="border-b last:border-0">
+                  <tr key={inv.id} className="border-b border-slate-800 last:border-0 hover:bg-slate-800/30">
                     <td className="px-2 py-1">{inv.caseNumber}</td>
                     <td className="px-2 py-1">{inv.matter}</td>
                     <td className="px-2 py-1">{inv.contact}</td>
