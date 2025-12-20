@@ -23,11 +23,11 @@ const counties = [
 
 export function CourtReportsPanel() {
   return (
-    <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4">
-      <h2 className="text-sm font-semibold text-slate-100 mb-2">
+    <div className="rounded-2xl border border-slate-800 bg-slate-900/50 p-4">
+      <h2 className="text-sm font-semibold text-slate-200 mb-2">
         County court reporting
       </h2>
-      <p className="text-[11px] text-slate-500 mb-3">
+      <p className="text-[11px] text-slate-400 mb-3">
         Different counties, different formats. HarmonyDesk will generate the
         correct layout for each one from your case data.
       </p>
@@ -36,16 +36,16 @@ export function CourtReportsPanel() {
         {counties.map((c) => (
           <div
             key={c.id}
-            className="rounded-xl border border-slate-800 bg-slate-950/60 px-3 py-2 text-xs"
+            className="rounded-xl border border-slate-800 bg-slate-950/50 px-3 py-2 text-xs"
           >
-            <p className="font-medium text-slate-100">{c.name}</p>
-            <p className="text-[11px] text-slate-400">{c.format}</p>
+            <p className="font-medium text-slate-200">{c.name}</p>
+            <p className="text-[11px] text-slate-500">{c.format}</p>
             <div className="mt-1 flex items-center justify-between">
               <span className="text-[11px] text-slate-500">
                 Next report: {c.nextDue}
               </span>
-              <button className="text-[11px] rounded-full border border-slate-700 px-2 py-0.5 text-slate-200 hover:bg-slate-900">
-                Preview month-end report
+              <button className="text-[11px] rounded-full border border-slate-700 px-2 py-0.5 text-sky-400 hover:bg-slate-900 hover:text-sky-300 transition-colors">
+                Preview
               </button>
             </div>
           </div>
