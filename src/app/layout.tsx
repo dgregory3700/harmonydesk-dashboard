@@ -3,7 +3,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
-import Footer from "../components/layout/footer"; // <-- use your footer component
+// import Footer from "../components/layout/footer"; // Commenting this out to avoid double footers in dashboard
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -26,14 +26,15 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className="light">
+    // CHANGE 1: "dark" instead of "light" forces the theme
+    <html lang="en" className="dark"> 
       <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased min-h-screen flex flex-col`}
+        className={`${geistSans.variable} ${geistMono.variable} antialiased min-h-screen flex flex-col bg-slate-950 text-slate-200`}
       >
         <main className="flex-1">
           {children}
         </main>
-        <Footer />
+        {/* <Footer /> */} 
       </body>
     </html>
   );
