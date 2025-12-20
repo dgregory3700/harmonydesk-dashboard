@@ -200,12 +200,12 @@ export default function ClientDetailPage() {
       <div className="space-y-4">
         <Link
           href="/clients"
-          className="text-xs text-muted-foreground hover:underline"
+          className="text-xs text-slate-400 hover:text-slate-200 hover:underline transition-colors"
         >
           ← Back to clients
         </Link>
-        <div className="rounded-xl border bg-card p-6">
-          <p className="text-sm text-muted-foreground">Loading client…</p>
+        <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-6">
+          <p className="text-sm text-slate-400">Loading client…</p>
         </div>
       </div>
     );
@@ -216,12 +216,12 @@ export default function ClientDetailPage() {
       <div className="space-y-4">
         <Link
           href="/clients"
-          className="text-xs text-muted-foreground hover:underline"
+          className="text-xs text-slate-400 hover:text-slate-200 hover:underline transition-colors"
         >
           ← Back to clients
         </Link>
-        <div className="rounded-xl border bg-card p-6">
-          <p className="text-sm text-destructive">
+        <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-6">
+          <p className="text-sm text-red-400">
             {clientError || "Client not found."}
           </p>
         </div>
@@ -235,80 +235,79 @@ export default function ClientDetailPage() {
       <div className="flex flex-col gap-1">
         <Link
           href="/clients"
-          className="text-xs text-muted-foreground hover:underline"
+          className="text-xs text-slate-400 hover:text-slate-200 hover:underline transition-colors"
         >
           ← Back to clients
         </Link>
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
-            <h1 className="text-2xl font-semibold tracking-tight">
+            <h1 className="text-2xl font-semibold tracking-tight text-slate-100">
               {client.name}
             </h1>
-            <p className="text-sm text-muted-foreground">
+            <p className="text-sm text-slate-400">
               Client profile and associated cases.
             </p>
           </div>
           <Link
             href="/cases/new"
-            className="rounded-md border px-3 py-1.5 text-xs font-medium hover:bg-accent"
+            className="rounded-md border border-slate-700 bg-slate-800 px-3 py-1.5 text-xs font-medium text-slate-200 hover:bg-slate-700 hover:text-white transition-colors"
           >
             Add case for this client
           </Link>
         </div>
       </div>
 
-      <form
-        onSubmit={handleSave}
-        className="grid gap-4 md:grid-cols-3"
-      >
+      <form onSubmit={handleSave} className="grid gap-4 md:grid-cols-3">
         {/* Left: details & notes */}
         <div className="md:col-span-2 space-y-4">
-          <div className="rounded-xl border bg-card p-4 shadow-sm space-y-3">
-            <h2 className="text-sm font-medium">Client details</h2>
+          <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-4 shadow-sm space-y-3">
+            <h2 className="text-sm font-medium text-slate-200">
+              Client details
+            </h2>
 
             <div className="space-y-1">
-              <label className="block text-xs font-medium text-muted-foreground">
+              <label className="block text-xs font-medium text-slate-400">
                 Name *
               </label>
               <input
                 type="text"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                className="w-full rounded-md border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                className="w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-200 placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
               />
             </div>
 
             <div className="grid gap-3 md:grid-cols-2">
               <div className="space-y-1">
-                <label className="block text-xs font-medium text-muted-foreground">
+                <label className="block text-xs font-medium text-slate-400">
                   Email
                 </label>
                 <input
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  className="w-full rounded-md border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  className="w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-200 placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
                 />
               </div>
 
               <div className="space-y-1">
-                <label className="block text-xs font-medium text-muted-foreground">
+                <label className="block text-xs font-medium text-slate-400">
                   Phone
                 </label>
                 <input
                   type="tel"
                   value={phone}
                   onChange={(e) => setPhone(e.target.value)}
-                  className="w-full rounded-md border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  className="w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-200 placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
                 />
               </div>
             </div>
           </div>
 
-          <div className="rounded-xl border bg-card p-4 shadow-sm space-y-2">
+          <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-4 shadow-sm space-y-2">
             <div className="flex items-center justify-between">
-              <h2 className="text-sm font-medium">Notes</h2>
-              <span className="text-[11px] text-muted-foreground">
+              <h2 className="text-sm font-medium text-slate-200">Notes</h2>
+              <span className="text-[11px] text-slate-500">
                 Internal notes about this client.
               </span>
             </div>
@@ -316,28 +315,28 @@ export default function ClientDetailPage() {
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
               rows={4}
-              className="w-full rounded-md border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              className="w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-200 placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
               placeholder="Example: prefers early morning sessions; safety concerns; communication preferences…"
             />
           </div>
 
           {/* Associated cases */}
-          <div className="rounded-xl border bg-card p-4 shadow-sm space-y-3">
+          <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-4 shadow-sm space-y-3">
             <div className="flex items-center justify-between">
-              <h2 className="text-sm font-medium">Associated cases</h2>
-              <span className="text-[11px] text-muted-foreground">
+              <h2 className="text-sm font-medium text-slate-200">
+                Associated cases
+              </h2>
+              <span className="text-[11px] text-slate-500">
                 Based on name match in case parties.
               </span>
             </div>
 
             {loadingCases ? (
-              <p className="text-sm text-muted-foreground">
-                Loading cases…
-              </p>
+              <p className="text-sm text-slate-500">Loading cases…</p>
             ) : casesError ? (
-              <p className="text-sm text-destructive">{casesError}</p>
+              <p className="text-sm text-red-400">{casesError}</p>
             ) : cases.length === 0 ? (
-              <p className="text-sm text-muted-foreground">
+              <p className="text-sm text-slate-500">
                 No cases found that mention this client by name.
               </p>
             ) : (
@@ -345,21 +344,21 @@ export default function ClientDetailPage() {
                 {cases.map((c) => (
                   <div
                     key={c.id}
-                    className="flex flex-col gap-1 rounded-md border bg-background p-2 text-xs md:flex-row md:items-center md:justify-between"
+                    className="flex flex-col gap-1 rounded-md border border-slate-800 bg-slate-950 p-2 text-xs md:flex-row md:items-center md:justify-between"
                   >
                     <div className="space-y-0.5">
-                      <p className="font-medium">{c.matter}</p>
-                      <p className="text-muted-foreground">
+                      <p className="font-medium text-slate-200">{c.matter}</p>
+                      <p className="text-slate-400">
                         {c.caseNumber} • {c.parties}
                       </p>
-                      <p className="text-muted-foreground">
+                      <p className="text-slate-500">
                         {c.county} • Next session:{" "}
                         {formatDate(c.nextSessionDate)}
                       </p>
                     </div>
                     <Link
                       href={`/cases/${c.id}`}
-                      className="mt-1 inline-flex rounded-md border px-3 py-1 text-[11px] font-medium hover:bg-accent md:mt-0"
+                      className="mt-1 inline-flex rounded-md border border-slate-700 bg-slate-800 px-3 py-1 text-[11px] font-medium text-slate-300 hover:bg-slate-700 hover:text-white md:mt-0 transition-colors"
                     >
                       View case
                     </Link>
@@ -372,11 +371,11 @@ export default function ClientDetailPage() {
 
         {/* Right: actions */}
         <div className="space-y-4">
-          <div className="rounded-xl border bg-card p-4 shadow-sm space-y-3">
+          <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-4 shadow-sm space-y-3">
             <button
               type="submit"
               disabled={saving}
-              className="w-full rounded-md bg-primary px-3 py-2 text-xs font-medium text-primary-foreground hover:opacity-90 disabled:opacity-60"
+              className="w-full rounded-md bg-sky-600 px-3 py-2 text-xs font-medium text-white hover:bg-sky-500 disabled:opacity-60 transition-colors"
             >
               {saving ? "Saving…" : "Save changes"}
             </button>
@@ -384,23 +383,21 @@ export default function ClientDetailPage() {
             <button
               type="button"
               onClick={handleDelete}
-              className="w-full rounded-md border px-3 py-2 text-xs font-medium text-destructive hover:bg-accent/40"
+              className="w-full rounded-md border border-slate-700 bg-transparent px-3 py-2 text-xs font-medium text-red-400 hover:bg-red-900/20 hover:border-red-800 transition-colors"
             >
               Delete client
             </button>
 
             {saveError && (
-              <p className="text-xs text-destructive">{saveError}</p>
+              <p className="text-xs text-red-400">{saveError}</p>
             )}
             {saveSuccess && !saveError && (
-              <p className="text-xs text-emerald-700">
-                Client updated.
-              </p>
+              <p className="text-xs text-emerald-400">Client updated.</p>
             )}
           </div>
 
-          <div className="rounded-xl border bg-card p-4 text-xs text-muted-foreground shadow-sm">
-            <p className="font-medium mb-1">Tip</p>
+          <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-4 text-xs text-slate-500 shadow-sm">
+            <p className="font-medium mb-1 text-slate-400">Tip</p>
             <p>
               You can mention this client by name in case parties (e.g.
               &quot;{client.name} / Other Party&quot;) so their cases show up
