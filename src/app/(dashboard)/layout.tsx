@@ -25,65 +25,73 @@ const navItems = [
     icon: LayoutDashboard,
   },
   {
-    href: "/calendar", // matches src/app/(dashboard)/calendar/page.tsx
+    href: "/calendar",
     label: "Calendar",
     icon: Calendar,
   },
   {
-    href: "/cases", // matches src/app/(dashboard)/cases/page.tsx
+    href: "/cases",
     label: "Cases",
     icon: FolderKanban,
   },
   {
-    href: "/billing", // matches src/app/(dashboard)/billing/page.tsx
+    href: "/billing",
     label: "Billing & Courts",
     icon: FileText,
   },
   {
-    href: "/messages", // matches src/app/(dashboard)/messages/page.tsx
+    href: "/messages",
     label: "Messages",
     icon: MessageCircle,
   },
   {
-    href: "/booking-links", // matches src/app/(dashboard)/booking-links/page.tsx
+    href: "/booking-links",
     label: "Booking links",
     icon: Link2,
   },
   {
-    href: "/clients", // matches src/app/(dashboard)/clients/page.tsx
+    href: "/clients",
     label: "Clients",
     icon: Users,
   },
   {
-    href: "/settings", // matches src/app/(dashboard)/settings/page.tsx
+    href: "/settings",
     label: "Settings",
     icon: Settings,
   },
 ];
 
+// --- DARK MODE STYLING ---
 const baseLink =
   "flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-colors";
-const activeLink = "bg-sky-50 text-sky-700";
+
+// Active Link: Subtle glow with blue text
+const activeLink = "bg-sky-500/10 text-sky-400"; 
+
+// Inactive Link: Muted gray, brightens on hover
 const inactiveLink =
-  "text-slate-700 hover:bg-slate-50 hover:text-slate-900";
+  "text-slate-400 hover:bg-slate-800 hover:text-slate-200";
 
 export default function DashboardLayout({ children }: DashboardLayoutProps) {
   const pathname = usePathname();
 
   return (
-    <div className="min-h-screen bg-slate-100 text-slate-900">
+    // Outer Shell: Deep dark background
+    <div className="min-h-screen bg-slate-950 text-slate-200">
       <div className="mx-auto flex max-w-7xl">
-        {/* Sidebar */}
-        <aside className="hidden w-64 border-r border-slate-200 bg-white px-4 py-6 md:block">
+        
+        {/* Sidebar: Dark slate background with a subtle border */}
+        <aside className="hidden w-64 border-r border-slate-800 bg-slate-900/50 px-4 py-6 md:block">
           <div className="mb-6 px-2">
-            <span className="text-lg font-semibold">
-              <span className="text-sky-600">Harmony</span>Desk
+            <span className="text-lg font-semibold text-slate-100">
+              <span className="text-sky-500">Harmony</span>Desk
             </span>
           </div>
 
           <nav className="space-y-1">
             {navItems.map((item) => {
               const Icon = item.icon;
+              // Check if link is active
               const isActive =
                 pathname === item.href ||
                 (item.href !== "/dashboard" &&
@@ -102,18 +110,19 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
             })}
           </nav>
 
-          <footer className="mt-8 px-2 text-xs text-slate-400">
+          <footer className="mt-8 px-2 text-xs text-slate-500">
             © {new Date().getFullYear()} HarmonyDesk
           </footer>
         </aside>
 
-        {/* Main content */}
+        {/* Main Content Area */}
         <main className="flex-1">
-          <header className="flex items-center justify-between border-b border-slate-200 bg-white px-4 py-3 md:px-6">
-            <h1 className="text-sm font-medium text-slate-700">
+          {/* Header: Matches the sidebar darkness */}
+          <header className="flex items-center justify-between border-b border-slate-800 bg-slate-950 px-4 py-3 md:px-6">
+            <h1 className="text-sm font-medium text-slate-400">
               HarmonyDesk dashboard
             </h1>
-            <span className="text-xs text-slate-400">
+            <span className="text-xs text-slate-500">
               Logged in as tired01@gmail.com
             </span>
           </header>
