@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 
+// --- TYPES ---
 type CaseStatus = "Open" | "Upcoming" | "Closed";
 
 type MediationCase = {
@@ -27,6 +28,7 @@ type MediationSession = {
   completed: boolean;
 };
 
+// --- HELPERS ---
 function formatDateTime(value?: string | null) {
   if (!value) return "—";
   const d = new Date(value);
@@ -73,6 +75,7 @@ export default function SessionDetailPage() {
   const [updateError, setUpdateError] = useState<string | null>(null);
   const [updateSuccess, setUpdateSuccess] = useState(false);
 
+  // --- DATA LOADING ---
   useEffect(() => {
     if (!sessionId) return;
 
@@ -117,6 +120,7 @@ export default function SessionDetailPage() {
     loadSession();
   }, [sessionId]);
 
+  // --- ACTIONS ---
   async function toggleCompleted() {
     if (!session || updating) return;
 
@@ -174,17 +178,18 @@ export default function SessionDetailPage() {
     }
   }
 
+  // --- RENDER STATES ---
   if (sessionLoading) {
     return (
       <div className="space-y-4">
         <Link
           href="/calendar"
-          className="text-xs text-muted-foreground hover:underline"
+          className="text-xs text-slate-400 hover:text-slate-200 hover:underline transition-colors"
         >
           ← Back to calendar
         </Link>
-        <div className="rounded-xl border bg-card p-6">
-          <p className="text-sm text-muted-foreground">Loading session…</p>
+        <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-6">
+          <p className="text-sm text-slate-400">Loading session…</p>
         </div>
       </div>
     );
@@ -195,12 +200,12 @@ export default function SessionDetailPage() {
       <div className="space-y-4">
         <Link
           href="/calendar"
-          className="text-xs text-muted-foreground hover:underline"
+          className="text-xs text-slate-400 hover:text-slate-200 hover:underline transition-colors"
         >
           ← Back to calendar
         </Link>
-        <div className="rounded-xl border bg-card p-6">
-          <p className="text-sm text-destructive">
+        <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-6">
+          <p className="text-sm text-red-400">
             {sessionError || "Session not found."}
           </p>
         </div>
@@ -214,26 +219,26 @@ export default function SessionDetailPage() {
       <div className="flex flex-col gap-1">
         <Link
           href="/calendar"
-          className="text-xs text-muted-foreground hover:underline"
+          className="text-xs text-slate-400 hover:text-slate-200 hover:underline transition-colors"
         >
           ← Back to calendar
         </Link>
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
-            <h1 className="text-2xl font-semibold tracking-tight">
+            <h1 className="text-2xl font-semibold tracking-tight text-slate-100">
               Mediation session
             </h1>
-            <p className="text-sm text-muted-foreground">
+            <p className="text-sm text-slate-400">
               {formatDateTime(session.date)} • {session.durationHours} hr
               {session.durationHours === 1 ? "" : "s"}
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2 text-xs">
             <span
-              className={`inline-flex items-center rounded-full px-2 py-0.5 font-medium ${
+              className={`inline-flex items-center rounded-full px-2 py-0.5 font-medium border ${
                 session.completed
-                  ? "bg-emerald-100 text-emerald-800"
-                  : "bg-blue-100 text-blue-800"
+                  ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-400"
+                  : "border-sky-500/20 bg-sky-500/10 text-sky-400"
               }`}
             >
               {session.completed ? "Completed" : "Upcoming"}
@@ -246,53 +251,52 @@ export default function SessionDetailPage() {
       <div className="grid gap-4 md:grid-cols-3">
         {/* Left: session + notes */}
         <div className="md:col-span-2 space-y-4">
-          <div className="rounded-xl border bg-card p-4 shadow-sm space-y-2">
-            <h2 className="text-sm font-medium">Session details</h2>
+          
+          {/* Details Card */}
+          <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-4 shadow-sm space-y-2">
+            <h2 className="text-sm font-medium text-slate-300">Session details</h2>
             <dl className="grid gap-2 text-sm md:grid-cols-2">
               <div>
-                <dt className="text-xs text-muted-foreground">
-                  Date & time
-                </dt>
-                <dd>{formatDateTime(session.date)}</dd>
+                <dt className="text-xs text-slate-500">Date & time</dt>
+                <dd className="text-slate-300">{formatDateTime(session.date)}</dd>
               </div>
               <div>
-                <dt className="text-xs text-muted-foreground">
-                  Duration
-                </dt>
-                <dd>
+                <dt className="text-xs text-slate-500">Duration</dt>
+                <dd className="text-slate-300">
                   {session.durationHours} hr
                   {session.durationHours === 1 ? "" : "s"}
                 </dd>
               </div>
               <div>
-                <dt className="text-xs text-muted-foreground">
-                  Status
-                </dt>
-                <dd>{session.completed ? "Completed" : "Upcoming"}</dd>
+                <dt className="text-xs text-slate-500">Status</dt>
+                <dd className="text-slate-300">
+                  {session.completed ? "Completed" : "Upcoming"}
+                </dd>
               </div>
             </dl>
           </div>
 
-          <div className="rounded-xl border bg-card p-4 shadow-sm space-y-2">
+          {/* Notes Card */}
+          <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-4 shadow-sm space-y-2">
             <div className="flex items-center justify-between">
-              <h2 className="text-sm font-medium">Notes</h2>
-              <span className="text-[11px] text-muted-foreground">
+              <h2 className="text-sm font-medium text-slate-300">Notes</h2>
+              <span className="text-[11px] text-slate-500">
                 Notes are stored on this individual session.
               </span>
             </div>
-            <p className="text-sm text-muted-foreground whitespace-pre-line">
+            <p className="text-sm text-slate-400 whitespace-pre-line">
               {session.notes || "No notes recorded for this session yet."}
             </p>
           </div>
 
           {/* Linked case */}
-          <div className="rounded-xl border bg-card p-4 shadow-sm space-y-3">
+          <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-4 shadow-sm space-y-3">
             <div className="flex items-center justify-between">
-              <h2 className="text-sm font-medium">Linked case</h2>
+              <h2 className="text-sm font-medium text-slate-300">Linked case</h2>
               {caseData && (
                 <Link
                   href={`/cases/${caseData.id}`}
-                  className="text-xs font-medium text-blue-600 hover:underline"
+                  className="text-xs font-medium text-sky-400 hover:text-sky-300 hover:underline transition-colors"
                 >
                   View case →
                 </Link>
@@ -300,22 +304,22 @@ export default function SessionDetailPage() {
             </div>
 
             {caseLoading ? (
-              <p className="text-sm text-muted-foreground">
+              <p className="text-sm text-slate-500">
                 Loading case information…
               </p>
             ) : caseError ? (
-              <p className="text-sm text-destructive">{caseError}</p>
+              <p className="text-sm text-red-400">{caseError}</p>
             ) : !caseData ? (
-              <p className="text-sm text-muted-foreground">
+              <p className="text-sm text-slate-500">
                 No case record found for this session.
               </p>
             ) : (
-              <div className="rounded-md border bg-background p-3 text-xs space-y-1">
-                <p className="font-medium">{caseData.matter}</p>
-                <p className="text-muted-foreground">
+              <div className="rounded-md border border-slate-800 bg-slate-950 p-3 text-xs space-y-1">
+                <p className="font-medium text-slate-200">{caseData.matter}</p>
+                <p className="text-slate-400">
                   {caseData.caseNumber} • {caseData.parties}
                 </p>
-                <p className="text-muted-foreground">
+                <p className="text-slate-500">
                   {caseData.county} • Next session:{" "}
                   {formatDate(caseData.nextSessionDate)}
                 </p>
@@ -326,12 +330,12 @@ export default function SessionDetailPage() {
 
         {/* Right: actions */}
         <div className="space-y-4">
-          <div className="rounded-xl border bg-card p-4 shadow-sm space-y-3">
+          <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-4 shadow-sm space-y-3">
             <button
               type="button"
               onClick={toggleCompleted}
               disabled={updating}
-              className="w-full rounded-md bg-primary px-3 py-2 text-xs font-medium text-primary-foreground hover:opacity-90 disabled:opacity-60"
+              className="w-full rounded-md bg-sky-600 px-3 py-2 text-xs font-medium text-white hover:bg-sky-500 disabled:opacity-60 transition-colors"
             >
               {updating
                 ? "Updating…"
@@ -343,25 +347,24 @@ export default function SessionDetailPage() {
             <button
               type="button"
               onClick={handleDelete}
-              className="w-full rounded-md border px-3 py-2 text-xs font-medium text-destructive hover:bg-accent/40"
+              className="w-full rounded-md border border-slate-700 bg-transparent px-3 py-2 text-xs font-medium text-red-400 hover:bg-red-900/20 hover:border-red-800 transition-colors"
             >
               Delete session
             </button>
 
             {updateError && (
-              <p className="text-xs text-destructive">{updateError}</p>
+              <p className="text-xs text-red-400">{updateError}</p>
             )}
             {updateSuccess && !updateError && (
-              <p className="text-xs text-emerald-700">Session updated.</p>
+              <p className="text-xs text-emerald-400">Session updated.</p>
             )}
           </div>
 
-          <div className="rounded-xl border bg-card p-4 text-xs text-muted-foreground shadow-sm">
-            <p className="font-medium mb-1">Tip</p>
+          <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-4 text-xs text-slate-500 shadow-sm">
+            <p className="font-medium mb-1 text-slate-400">Tip</p>
             <p>
-              From here you can quickly mark sessions as completed after
-              they finish, so your billing module always has up-to-date
-              hours.
+              From here you can quickly mark sessions as completed after they
+              finish, so your billing module always has up-to-date hours.
             </p>
           </div>
         </div>
