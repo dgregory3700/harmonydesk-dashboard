@@ -135,12 +135,12 @@ export default function MessageDetailPage() {
       <div className="space-y-4">
         <Link
           href="/messages"
-          className="text-xs text-muted-foreground hover:underline"
+          className="text-xs text-slate-400 hover:text-slate-200 hover:underline transition-colors"
         >
           ← Back to messages
         </Link>
-        <div className="rounded-xl border bg-card p-6">
-          <p className="text-sm text-muted-foreground">Loading…</p>
+        <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-6">
+          <p className="text-sm text-slate-400">Loading…</p>
         </div>
       </div>
     );
@@ -151,14 +151,12 @@ export default function MessageDetailPage() {
       <div className="space-y-4">
         <Link
           href="/messages"
-          className="text-xs text-muted-foreground hover:underline"
+          className="text-xs text-slate-400 hover:text-slate-200 hover:underline transition-colors"
         >
           ← Back to messages
         </Link>
-        <div className="rounded-xl border bg-card p-6">
-          <p className="text-sm text-destructive">
-            {error || "Message not found."}
-          </p>
+        <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-6">
+          <p className="text-sm text-red-400">{error || "Message not found."}</p>
         </div>
       </div>
     );
@@ -170,16 +168,16 @@ export default function MessageDetailPage() {
       <div className="flex flex-col gap-1">
         <Link
           href="/messages"
-          className="text-xs text-muted-foreground hover:underline"
+          className="text-xs text-slate-400 hover:text-slate-200 hover:underline transition-colors"
         >
           ← Back to messages
         </Link>
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
-            <h1 className="text-2xl font-semibold tracking-tight">
+            <h1 className="text-2xl font-semibold tracking-tight text-slate-100">
               {message.subject}
             </h1>
-            <p className="text-sm text-muted-foreground">
+            <p className="text-sm text-slate-400">
               Created {formatDate(message.createdAt)}
             </p>
           </div>
@@ -189,20 +187,20 @@ export default function MessageDetailPage() {
       <div className="grid gap-4 md:grid-cols-3">
         {/* Left: body */}
         <div className="md:col-span-2 space-y-4">
-          <div className="rounded-xl border bg-card p-4 shadow-sm space-y-2">
-            <h2 className="text-sm font-medium">Message</h2>
-            <p className="whitespace-pre-line text-sm text-muted-foreground">
+          <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-4 shadow-sm space-y-2">
+            <h2 className="text-sm font-medium text-slate-300">Message</h2>
+            <p className="whitespace-pre-line text-sm text-slate-400">
               {message.body}
             </p>
           </div>
 
-          <div className="rounded-xl border bg-card p-4 shadow-sm space-y-3">
+          <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-4 shadow-sm space-y-3">
             <div className="flex items-center justify-between">
-              <h2 className="text-sm font-medium">Linked case</h2>
+              <h2 className="text-sm font-medium text-slate-300">Linked case</h2>
               {caseData && (
                 <Link
                   href={`/cases/${caseData.id}`}
-                  className="text-xs font-medium text-blue-600 hover:underline"
+                  className="text-xs font-medium text-sky-400 hover:text-sky-300 hover:underline transition-colors"
                 >
                   View case →
                 </Link>
@@ -210,22 +208,22 @@ export default function MessageDetailPage() {
             </div>
 
             {loadingCase ? (
-              <p className="text-sm text-muted-foreground">
+              <p className="text-sm text-slate-500">
                 Loading case information…
               </p>
             ) : caseError ? (
-              <p className="text-sm text-destructive">{caseError}</p>
+              <p className="text-sm text-red-400">{caseError}</p>
             ) : !caseData ? (
-              <p className="text-sm text-muted-foreground">
+              <p className="text-sm text-slate-500">
                 No case linked to this message.
               </p>
             ) : (
-              <div className="rounded-md border bg-background p-3 text-xs space-y-1">
-                <p className="font-medium">{caseData.matter}</p>
-                <p className="text-muted-foreground">
+              <div className="rounded-md border border-slate-700 bg-slate-950 p-3 text-xs space-y-1">
+                <p className="font-medium text-slate-200">{caseData.matter}</p>
+                <p className="text-slate-400">
                   {caseData.caseNumber} • {caseData.parties}
                 </p>
-                <p className="text-muted-foreground">
+                <p className="text-slate-500">
                   {caseData.county} • Next session:{" "}
                   {formatDate(caseData.nextSessionDate)}
                 </p>
@@ -236,27 +234,27 @@ export default function MessageDetailPage() {
 
         {/* Right: actions */}
         <div className="space-y-4">
-          <div className="rounded-xl border bg-card p-4 shadow-sm space-y-3">
+          <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-4 shadow-sm space-y-3">
             <button
               type="button"
               onClick={handleDelete}
               disabled={deleting}
-              className="w-full rounded-md border px-3 py-2 text-xs font-medium text-destructive hover:bg-accent/40 disabled:opacity-60"
+              className="w-full rounded-md border border-slate-700 bg-transparent px-3 py-2 text-xs font-medium text-red-400 hover:bg-red-900/20 hover:border-red-800 disabled:opacity-60 transition-colors"
             >
               {deleting ? "Deleting…" : "Delete message"}
             </button>
 
             {deleteError && (
-              <p className="text-xs text-destructive">{deleteError}</p>
+              <p className="text-xs text-red-400">{deleteError}</p>
             )}
           </div>
 
-          <div className="rounded-xl border bg-card p-4 text-xs text-muted-foreground shadow-sm">
-            <p className="font-medium mb-1">Tip</p>
+          <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-4 text-xs text-slate-500 shadow-sm">
+            <p className="font-medium mb-1 text-slate-400">Tip</p>
             <p>
               Use messages as an internal log: what was discussed, safety
-              concerns, agreements-in-principle, or things to prepare before
-              the next session.
+              concerns, agreements-in-principle, or things to prepare before the
+              next session.
             </p>
           </div>
         </div>
