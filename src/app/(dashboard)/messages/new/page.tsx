@@ -170,15 +170,15 @@ function NewMessagePageInner() {
       <div className="flex flex-col gap-1">
         <Link
           href="/messages"
-          className="text-xs text-muted-foreground hover:underline"
+          className="text-xs text-slate-400 hover:text-slate-200 hover:underline transition-colors"
         >
           ← Back to messages
         </Link>
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">
+          <h1 className="text-2xl font-semibold tracking-tight text-slate-100">
             New message
           </h1>
-          <p className="text-sm text-muted-foreground">
+          <p className="text-sm text-slate-400">
             Add an internal note or message, optionally linked to a case. You
             can also choose to send it as an email.
           </p>
@@ -188,29 +188,29 @@ function NewMessagePageInner() {
       <form onSubmit={handleSubmit} className="grid gap-4 md:grid-cols-3">
         {/* Left: message content */}
         <div className="md:col-span-2 space-y-4">
-          <div className="rounded-xl border bg-card p-4 shadow-sm space-y-3">
+          <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-4 shadow-sm space-y-3">
             <div className="space-y-1">
-              <label className="block text-xs font-medium text-muted-foreground">
+              <label className="block text-xs font-medium text-slate-400">
                 Subject *
               </label>
               <input
                 type="text"
                 value={subject}
                 onChange={(e) => setSubject(e.target.value)}
-                className="w-full rounded-md border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                className="w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-200 placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
                 placeholder="Example: Prep notes for Johnson / Lee mediation"
               />
             </div>
 
             <div className="space-y-1">
-              <label className="block text-xs font-medium text-muted-foreground">
+              <label className="block text-xs font-medium text-slate-400">
                 Message *
               </label>
               <textarea
                 value={body}
                 onChange={(e) => setBody(e.target.value)}
                 rows={8}
-                className="w-full rounded-md border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                className="w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-200 placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
                 placeholder="Internal note, safety concerns, what to cover in the next session, etc."
               />
             </div>
@@ -219,23 +219,21 @@ function NewMessagePageInner() {
 
         {/* Right: case link & actions */}
         <div className="space-y-4">
-          <div className="rounded-xl border bg-card p-4 shadow-sm space-y-3">
+          <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-4 shadow-sm space-y-3">
             {/* Link to case */}
             <div className="space-y-1">
-              <label className="block text-xs font-medium text-muted-foreground">
+              <label className="block text-xs font-medium text-slate-400">
                 Link to case (optional)
               </label>
               {loadingCases ? (
-                <p className="text-xs text-muted-foreground">
-                  Loading cases…
-                </p>
+                <p className="text-xs text-slate-500">Loading cases…</p>
               ) : casesError ? (
-                <p className="text-xs text-destructive">{casesError}</p>
+                <p className="text-xs text-red-400">{casesError}</p>
               ) : (
                 <select
                   value={caseId}
                   onChange={(e) => setCaseId(e.target.value)}
-                  className="w-full rounded-md border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  className="w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
                 >
                   <option value="">No case linked</option>
                   {cases.map((c) => (
@@ -248,11 +246,11 @@ function NewMessagePageInner() {
             </div>
 
             {/* Email options */}
-            <div className="space-y-2 border-t pt-3 mt-2">
-              <label className="flex items-center gap-2 text-xs text-muted-foreground">
+            <div className="space-y-2 border-t border-slate-800 pt-3 mt-2">
+              <label className="flex items-center gap-2 text-xs text-slate-400 hover:text-slate-200 cursor-pointer">
                 <input
                   type="checkbox"
-                  className="h-3 w-3"
+                  className="h-3 w-3 accent-sky-500"
                   checked={sendAsEmail}
                   onChange={(e) => setSendAsEmail(e.target.checked)}
                 />
@@ -261,19 +259,19 @@ function NewMessagePageInner() {
 
               {sendAsEmail && (
                 <div className="space-y-1">
-                  <label className="block text-xs font-medium text-muted-foreground">
+                  <label className="block text-xs font-medium text-slate-400">
                     To email
                   </label>
                   <input
                     type="email"
                     value={toEmail}
                     onChange={(e) => setToEmail(e.target.value)}
-                    className="w-full rounded-md border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    className="w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-200 placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
                     placeholder="person@example.com"
                   />
-                  <p className="text-[11px] text-muted-foreground">
+                  <p className="text-[11px] text-slate-500">
                     For now, emails are sent from{" "}
-                    <span className="font-medium">
+                    <span className="font-medium text-slate-400">
                       contact@harmonydesk.ai
                     </span>
                     .
@@ -285,24 +283,20 @@ function NewMessagePageInner() {
             <button
               type="submit"
               disabled={submitting}
-              className="w-full rounded-md bg-primary px-3 py-2 text-xs font-medium text-primary-foreground hover:opacity-90 disabled:opacity-60"
+              className="w-full rounded-md bg-sky-600 px-3 py-2 text-xs font-medium text-white hover:bg-sky-500 disabled:opacity-60 transition-colors"
             >
               {submitting ? "Saving…" : "Save message"}
             </button>
 
-            {error && (
-              <p className="text-xs text-destructive">{error}</p>
-            )}
+            {error && <p className="text-xs text-red-400">{error}</p>}
 
             {emailInfo && (
-              <p className="text-[11px] text-muted-foreground">
-                {emailInfo}
-              </p>
+              <p className="text-[11px] text-slate-400">{emailInfo}</p>
             )}
 
-            <p className="text-[11px] text-muted-foreground">
-              Messages are private to you for now. Later we can sync them
-              with email history.
+            <p className="text-[11px] text-slate-500">
+              Messages are private to you for now. Later we can sync them with
+              email history.
             </p>
           </div>
         </div>
@@ -317,7 +311,7 @@ export default function NewMessagePage() {
     <Suspense
       fallback={
         <div className="space-y-6">
-          <div className="text-sm text-muted-foreground">Loading…</div>
+          <div className="text-sm text-slate-400">Loading…</div>
         </div>
       }
     >
