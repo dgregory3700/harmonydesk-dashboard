@@ -110,27 +110,27 @@ export default function MessagesPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">
+          <h1 className="text-2xl font-semibold tracking-tight text-slate-100">
             Messages
           </h1>
-          <p className="text-sm text-muted-foreground">
+          <p className="text-sm text-slate-400">
             Keep internal notes or message history linked to your cases.
           </p>
         </div>
 
         <Link
           href="/messages/new"
-          className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90"
+          className="rounded-md bg-sky-600 px-4 py-2 text-sm font-medium text-white hover:bg-sky-500 transition-colors"
         >
           + New message
         </Link>
       </div>
 
       {/* Search */}
-      <div className="flex flex-col gap-3 rounded-xl border bg-card p-4 shadow-sm md:flex-row md:items-center md:justify-between">
-        <p className="text-xs text-muted-foreground">
-          Messages are internal-only for now. Later we can connect email or
-          SMS providers.
+      <div className="flex flex-col gap-3 rounded-xl border border-slate-800 bg-slate-900/50 p-4 shadow-sm md:flex-row md:items-center md:justify-between">
+        <p className="text-xs text-slate-400">
+          Messages are internal-only for now. Later we can connect email or SMS
+          providers.
         </p>
         <div className="w-full md:w-64">
           <input
@@ -138,23 +138,23 @@ export default function MessagesPage() {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search by subject or text…"
-            className="w-full rounded-md border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            className="w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
           />
         </div>
       </div>
 
       {/* List */}
-      <div className="rounded-xl border bg-card p-4 shadow-sm">
-        <h2 className="mb-3 text-sm font-medium">Inbox</h2>
+      <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-4 shadow-sm">
+        <h2 className="mb-3 text-sm font-medium text-slate-300">Inbox</h2>
 
         {loading ? (
-          <p className="text-sm text-muted-foreground">Loading…</p>
+          <p className="text-sm text-slate-500">Loading…</p>
         ) : error ? (
-          <p className="text-sm text-destructive">{error}</p>
+          <p className="text-sm text-red-400">{error}</p>
         ) : filtered.length === 0 ? (
-          <p className="text-sm text-muted-foreground">
-            No messages yet. Start by creating a new message and linking it to
-            a case.
+          <p className="text-sm text-slate-500">
+            No messages yet. Start by creating a new message and linking it to a
+            case.
           </p>
         ) : (
           <div className="space-y-3">
@@ -165,21 +165,21 @@ export default function MessagesPage() {
                   key={m.id}
                   type="button"
                   onClick={() => handleRowClick(m.id)}
-                  className="flex w-full flex-col gap-1 rounded-lg border bg-background p-3 text-left text-xs hover:bg-accent md:flex-row md:items-center md:justify-between"
+                  className="flex w-full flex-col gap-1 rounded-lg border border-slate-800 bg-slate-950 p-3 text-left text-xs hover:border-slate-600 hover:bg-slate-900 transition-all md:flex-row md:items-center md:justify-between"
                 >
                   <div className="space-y-0.5">
-                    <p className="text-sm font-medium">{m.subject}</p>
-                    <p className="text-muted-foreground line-clamp-2">
-                      {m.body}
+                    <p className="text-sm font-medium text-slate-200">
+                      {m.subject}
                     </p>
+                    <p className="text-slate-400 line-clamp-2">{m.body}</p>
                     {c && (
-                      <p className="text-[11px] text-muted-foreground">
+                      <p className="text-[11px] text-slate-500">
                         Case: {c.matter} ({c.caseNumber})
                       </p>
                     )}
                   </div>
                   <div className="flex flex-col items-start gap-1 md:items-end">
-                    <span className="text-[11px] text-muted-foreground">
+                    <span className="text-[11px] text-slate-500">
                       {formatDate(m.createdAt)}
                     </span>
                   </div>
