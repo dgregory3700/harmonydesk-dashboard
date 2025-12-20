@@ -16,8 +16,8 @@ export function DashboardGreeting() {
 
   return (
     <div className="space-y-1">
-      <h1 className="text-2xl font-semibold tracking-tight text-slate-50">
-        Welcome back, {nameOrEmail}
+      <h1 className="text-2xl font-semibold tracking-tight text-slate-100">
+        Welcome back, <span className="text-sky-400">{nameOrEmail}</span>
       </h1>
       <p className="text-sm text-slate-400">
         Here&apos;s a quick snapshot of your HarmonyDesk activity.
