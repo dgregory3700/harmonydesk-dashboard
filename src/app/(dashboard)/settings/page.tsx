@@ -80,7 +80,7 @@ export default function SettingsPage() {
           defaultCounty: settings.defaultCounty,
           defaultSessionDuration: settings.defaultSessionDuration,
           timezone: settings.timezone,
-          darkMode: true, // Force true since we are enforcing dark mode
+          darkMode: true, // Force Dark Mode
         }),
       });
 
