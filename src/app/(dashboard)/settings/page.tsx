@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, FormEvent } from "react";
+import { supabaseBrowser } from "@/lib/supabaseBrowser";
 
 type UserSettings = {
   id: string | null;
@@ -53,6 +54,10 @@ export default function SettingsPage() {
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saveSuccess, setSaveSuccess] = useState(false);
 
+  // Real identity (Supabase Auth)
+  const [sessionEmail, setSessionEmail] = useState<string | null>(null);
+  const [sessionChecking, setSessionChecking] = useState(true);
+
   // Plan & Subscription
   const [billing, setBilling] = useState<BillingStatus | null>(null);
   const [billingLoading, setBillingLoading] = useState(true);
@@ -60,6 +65,44 @@ export default function SettingsPage() {
   const [portalLoading, setPortalLoading] = useState(false);
   const [portalError, setPortalError] = useState<string | null>(null);
 
+  // 1) Get authenticated email from Supabase session
+  useEffect(() => {
+    let mounted = true;
+
+    async function loadSession() {
+      try {
+        setSessionChecking(true);
+        const { data } = await supabaseBrowser.auth.getSession();
+        const email = data.session?.user?.email ?? null;
+        if (!mounted) return;
+
+        setSessionEmail(email);
+      } catch (err) {
+        console.error("Session load error:", err);
+        if (!mounted) return;
+        setSessionEmail(null);
+      } finally {
+        if (mounted) setSessionChecking(false);
+      }
+    }
+
+    loadSession();
+
+    const { data: sub } = supabaseBrowser.auth.onAuthStateChange(
+      (_event, session) => {
+        if (!mounted) return;
+        setSessionEmail(session?.user?.email ?? null);
+        setSessionChecking(false);
+      }
+    );
+
+    return () => {
+      mounted = false;
+      sub.subscription.unsubscribe();
+    };
+  }, []);
+
+  // 2) Load existing settings from your Next API (unchanged)
   useEffect(() => {
     async function fetchSettings() {
       try {
@@ -82,9 +125,14 @@ export default function SettingsPage() {
     fetchSettings();
   }, []);
 
+  // 3) Load billing status using *sessionEmail* (source of truth)
   useEffect(() => {
     async function fetchBilling() {
-      if (!settings?.userEmail) return;
+      if (!sessionEmail) {
+        setBilling(null);
+        setBillingLoading(false);
+        return;
+      }
 
       try {
         setBillingLoading(true);
@@ -94,9 +142,7 @@ export default function SettingsPage() {
           process.env.NEXT_PUBLIC_API_URL || "https://api.harmonydesk.ai";
 
         const res = await fetch(
-          `${baseUrl}/api/billing/status?email=${encodeURIComponent(
-            settings.userEmail
-          )}`,
+          `${baseUrl}/api/billing/status?email=${encodeURIComponent(sessionEmail)}`,
           { cache: "no-store" }
         );
 
@@ -112,7 +158,7 @@ export default function SettingsPage() {
     }
 
     fetchBilling();
-  }, [settings?.userEmail]);
+  }, [sessionEmail]);
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -156,7 +202,7 @@ export default function SettingsPage() {
   }
 
   async function handleManageSubscription() {
-    if (!settings?.userEmail || portalLoading) return;
+    if (!sessionEmail || portalLoading) return;
 
     try {
       setPortalLoading(true);
@@ -168,7 +214,7 @@ export default function SettingsPage() {
       const res = await fetch(`${baseUrl}/api/stripe/portal`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: settings.userEmail }),
+        body: JSON.stringify({ email: sessionEmail }),
       });
 
       if (!res.ok) {
@@ -190,6 +236,34 @@ export default function SettingsPage() {
 
   function update<K extends keyof UserSettings>(key: K, value: UserSettings[K]) {
     setSettings((prev) => (prev ? { ...prev, [key]: value } : prev));
+  }
+
+  if (sessionChecking) {
+    return (
+      <div className="space-y-4">
+        <h1 className="text-2xl font-semibold tracking-tight text-slate-100">
+          Settings
+        </h1>
+        <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-6">
+          <p className="text-sm text-slate-400">Checking your session…</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!sessionEmail) {
+    return (
+      <div className="space-y-4">
+        <h1 className="text-2xl font-semibold tracking-tight text-slate-100">
+          Settings
+        </h1>
+        <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-6">
+          <p className="text-sm text-red-400">
+            You are not signed in. Please go to the login page.
+          </p>
+        </div>
+      </div>
+    );
   }
 
   if (loading) {
@@ -350,7 +424,7 @@ export default function SettingsPage() {
               <div className="space-y-2 text-xs text-slate-300">
                 <div className="flex justify-between">
                   <span className="text-slate-400">Account</span>
-                  <span className="font-medium">{settings.userEmail}</span>
+                  <span className="font-medium">{sessionEmail}</span>
                 </div>
 
                 <div className="flex justify-between">
