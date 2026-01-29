@@ -4,44 +4,127 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { auth } from "@/lib/auth";
 
+type BillingStatus = {
+  user_email: string;
+  status: "trialing" | "active" | "inactive";
+  trial_end_at: string | null;
+  current_period_end_at: string | null;
+  enabled: boolean;
+};
+
 export default function Topbar() {
   const router = useRouter();
+
   const [email, setEmail] = useState<string | null>(null);
+  const [billing, setBilling] = useState<BillingStatus | null>(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Use the same auth helper the rest of the app uses.
-    // It runs on the client, where it has access to cookies/localStorage.
     try {
-      if (auth.isLoggedIn()) {
-        const userEmail = auth.getUserEmail();
-        setEmail(userEmail ?? null);
-      } else {
-        setEmail(null);
+      if (!auth.isLoggedIn()) {
+        router.push("/login");
+        return;
       }
+
+      const userEmail = auth.getUserEmail();
+      if (!userEmail) {
+        router.push("/login");
+        return;
+      }
+
+      setEmail(userEmail);
+
+      fetchBillingStatus(userEmail);
     } catch {
-      // If anything goes wrong, just don't show an email.
-      setEmail(null);
+      router.push("/login");
     }
   }, []);
+
+  async function fetchBillingStatus(userEmail: string) {
+    try {
+      const baseUrl =
+        process.env.NEXT_PUBLIC_API_URL || "https://api.harmonydesk.ai";
+
+      const res = await fetch(
+        `${baseUrl}/api/billing/status?email=${encodeURIComponent(userEmail)}`
+      );
+
+      if (!res.ok) {
+        throw new Error("Billing status fetch failed");
+      }
+
+      const data: BillingStatus = await res.json();
+      setBilling(data);
+
+      // Hard gate enforcement
+      if (!data.enabled) {
+        router.push("/billing");
+      }
+    } catch (err) {
+      console.error("Billing status error:", err);
+      router.push("/billing");
+    } finally {
+      setLoading(false);
+    }
+  }
 
   function handleLogout() {
     auth.logOut();
     router.push("/login");
   }
 
+  function renderBillingBadge() {
+    if (!billing) return null;
+
+    if (billing.status === "trialing") {
+      return (
+        <span className="text-xs px-2 py-1 rounded-full bg-blue-100 text-blue-700">
+          Trial
+        </span>
+      );
+    }
+
+    if (billing.status === "active") {
+      return (
+        <span className="text-xs px-2 py-1 rounded-full bg-green-100 text-green-700">
+          Active
+        </span>
+      );
+    }
+
+    return (
+      <span className="text-xs px-2 py-1 rounded-full bg-red-100 text-red-700">
+        Inactive
+      </span>
+    );
+  }
+
+  if (loading) {
+    return (
+      <header className="h-16 border-b border-slate-200 bg-white flex items-center px-6 text-slate-500 text-sm">
+        Loading account status...
+      </header>
+    );
+  }
+
   return (
     <header className="h-16 border-b border-slate-200 bg-white flex items-center justify-between px-6 text-slate-900">
-      {/* Left side: greeting + email */}
-      <div className="flex flex-col">
+      {/* Left side */}
+      <div className="flex flex-col gap-1">
         <span className="text-sm text-slate-700">Welcome back 👋</span>
-        {email && (
-          <span className="text-xs font-medium text-slate-900">
-            {email}
-          </span>
-        )}
+
+        <div className="flex items-center gap-2">
+          {email && (
+            <span className="text-xs font-medium text-slate-900">
+              {email}
+            </span>
+          )}
+
+          {renderBillingBadge()}
+        </div>
       </div>
 
-      {/* Right side: log out button */}
+      {/* Right side */}
       <button
         type="button"
         onClick={handleLogout}
