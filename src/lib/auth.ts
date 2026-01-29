@@ -1,32 +1,27 @@
 // src/lib/auth.ts
+import { supabaseBrowser } from "@/lib/supabaseBrowser";
 
-const LOGGED_IN_KEY = "hd_logged_in";
-const EMAIL_KEY = "hd_user_email";
-
-// Just a tiny dev-only auth store using localStorage.
+// Compatibility wrapper: keeps the old auth.* API surface
+// but uses Supabase session as the source of truth.
 export const auth = {
-  isLoggedIn(): boolean {
-    if (typeof window === "undefined") return false;
-    return localStorage.getItem(LOGGED_IN_KEY) === "true";
+  async isLoggedIn(): Promise<boolean> {
+    const { data } = await supabaseBrowser.auth.getSession();
+    return Boolean(data.session);
   },
 
-  getUserEmail(): string | null {
-    if (typeof window === "undefined") return null;
-    const email = localStorage.getItem(EMAIL_KEY);
+  async getUserEmail(): Promise<string | null> {
+    const { data } = await supabaseBrowser.auth.getSession();
+    const email = data.session?.user?.email ?? null;
     return email && email.trim() !== "" ? email : null;
   },
 
-  logIn(email?: string) {
-    if (typeof window === "undefined") return;
-    localStorage.setItem(LOGGED_IN_KEY, "true");
-    if (email) {
-      localStorage.setItem(EMAIL_KEY, email);
-    }
+  // For magic link flow, "logIn" isn't used the same way anymore.
+  // Keep it here so old code doesn't crash; it does nothing.
+  logIn(_email?: string) {
+    // no-op
   },
 
-  logOut() {
-    if (typeof window === "undefined") return;
-    localStorage.removeItem(LOGGED_IN_KEY);
-    localStorage.removeItem(EMAIL_KEY);
+  async logOut() {
+    await supabaseBrowser.auth.signOut();
   },
 };
