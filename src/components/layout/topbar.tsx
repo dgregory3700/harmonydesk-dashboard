@@ -6,7 +6,7 @@ import { auth } from "@/lib/auth";
 
 type BillingStatus = {
   user_email: string;
-  status: "trialing" | "active" | "inactive";
+  status: string;
   trial_end_at: string | null;
   current_period_end_at: string | null;
   enabled: boolean;
@@ -33,11 +33,11 @@ export default function Topbar() {
       }
 
       setEmail(userEmail);
-
       fetchBillingStatus(userEmail);
     } catch {
       router.push("/login");
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   async function fetchBillingStatus(userEmail: string) {
@@ -46,23 +46,22 @@ export default function Topbar() {
         process.env.NEXT_PUBLIC_API_URL || "https://api.harmonydesk.ai";
 
       const res = await fetch(
-        `${baseUrl}/api/billing/status?email=${encodeURIComponent(userEmail)}`
+        `${baseUrl}/api/billing/status?email=${encodeURIComponent(userEmail)}`,
+        { cache: "no-store" }
       );
 
-      if (!res.ok) {
-        throw new Error("Billing status fetch failed");
-      }
+      if (!res.ok) throw new Error("Billing status fetch failed");
 
       const data: BillingStatus = await res.json();
       setBilling(data);
 
-      // Hard gate enforcement
+      // Hard gate → send locked users to Settings (Plan & Subscription card)
       if (!data.enabled) {
-        router.push("/billing");
+        router.push("/settings");
       }
     } catch (err) {
       console.error("Billing status error:", err);
-      router.push("/billing");
+      router.push("/settings");
     } finally {
       setLoading(false);
     }
@@ -109,22 +108,17 @@ export default function Topbar() {
 
   return (
     <header className="h-16 border-b border-slate-200 bg-white flex items-center justify-between px-6 text-slate-900">
-      {/* Left side */}
       <div className="flex flex-col gap-1">
         <span className="text-sm text-slate-700">Welcome back 👋</span>
 
         <div className="flex items-center gap-2">
           {email && (
-            <span className="text-xs font-medium text-slate-900">
-              {email}
-            </span>
+            <span className="text-xs font-medium text-slate-900">{email}</span>
           )}
-
           {renderBillingBadge()}
         </div>
       </div>
 
-      {/* Right side */}
       <button
         type="button"
         onClick={handleLogout}
