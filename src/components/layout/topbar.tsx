@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { auth } from "@/lib/auth";
+import { supabaseBrowser } from "@/lib/supabaseBrowser";
 
 type BillingStatus = {
   user_email: string;
@@ -20,55 +20,57 @@ export default function Topbar() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    try {
-      if (!auth.isLoggedIn()) {
-        router.push("/login");
+    let mounted = true;
+
+    async function run() {
+      try {
+        const { data } = await supabaseBrowser.auth.getSession();
+        const sessionEmail = data.session?.user?.email ?? null;
+
+        if (!sessionEmail) {
+          router.replace("/login");
+          return;
+        }
+
+        if (!mounted) return;
+        setEmail(sessionEmail);
+
+        const baseUrl =
+          process.env.NEXT_PUBLIC_API_URL || "https://api.harmonydesk.ai";
+
+        const res = await fetch(
+          `${baseUrl}/api/billing/status?email=${encodeURIComponent(sessionEmail)}`,
+          { cache: "no-store" }
+        );
+
+        if (!res.ok) throw new Error("Billing status fetch failed");
+
+        const b = (await res.json()) as BillingStatus;
+        if (!mounted) return;
+        setBilling(b);
+
+        if (!b.enabled) {
+          router.replace("/settings");
+          return;
+        }
+      } catch (err) {
+        console.error("Topbar error:", err);
+        router.replace("/login");
         return;
+      } finally {
+        if (mounted) setLoading(false);
       }
-
-      const userEmail = auth.getUserEmail();
-      if (!userEmail) {
-        router.push("/login");
-        return;
-      }
-
-      setEmail(userEmail);
-      fetchBillingStatus(userEmail);
-    } catch {
-      router.push("/login");
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
-  async function fetchBillingStatus(userEmail: string) {
-    try {
-      const baseUrl =
-        process.env.NEXT_PUBLIC_API_URL || "https://api.harmonydesk.ai";
+    run();
 
-      const res = await fetch(
-        `${baseUrl}/api/billing/status?email=${encodeURIComponent(userEmail)}`,
-        { cache: "no-store" }
-      );
+    return () => {
+      mounted = false;
+    };
+  }, [router]);
 
-      if (!res.ok) throw new Error("Billing status fetch failed");
-
-      const data: BillingStatus = await res.json();
-      setBilling(data);
-
-      // Hard gate → send locked users to Settings (Plan & Subscription card)
-      if (!data.enabled) {
-        router.push("/settings");
-      }
-    } catch (err) {
-      console.error("Billing status error:", err);
-      router.push("/settings");
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  function handleLogout() {
-    auth.logOut();
+  async function handleLogout() {
+    await supabaseBrowser.auth.signOut();
     router.push("/login");
   }
 
@@ -110,7 +112,6 @@ export default function Topbar() {
     <header className="h-16 border-b border-slate-200 bg-white flex items-center justify-between px-6 text-slate-900">
       <div className="flex flex-col gap-1">
         <span className="text-sm text-slate-700">Welcome back 👋</span>
-
         <div className="flex items-center gap-2">
           {email && (
             <span className="text-xs font-medium text-slate-900">{email}</span>
