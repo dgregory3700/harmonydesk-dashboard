@@ -13,11 +13,12 @@ import {
   Settings,
   FileText,
 } from "lucide-react";
+
 import { auth } from "@/lib/auth";
 
 type BillingStatus = {
   user_email: string;
-  status: string;
+  status: string; // "trialing" | "active" | "inactive" | "none"
   trial_end_at: string | null;
   current_period_end_at: string | null;
   enabled: boolean;
@@ -37,53 +38,74 @@ const navItems = [
 export function Sidebar() {
   const pathname = usePathname();
 
-  const [billingEnabled, setBillingEnabled] = useState<boolean | null>(null);
+  const [email, setEmail] = useState<string | null>(null);
+  const [billing, setBilling] = useState<BillingStatus | null>(null);
+  const [billingLoading, setBillingLoading] = useState(false);
+
+  const apiBaseUrl = useMemo(() => {
+    // In the browser, NEXT_PUBLIC_* is available.
+    // Fallback keeps things working even if env is missing.
+    return process.env.NEXT_PUBLIC_API_URL || "https://api.harmonydesk.ai";
+  }, []);
 
   useEffect(() => {
-    const run = async () => {
+    let mounted = true;
+
+    async function loadEmail() {
       try {
-        if (!auth.isLoggedIn()) {
-          setBillingEnabled(null);
-          return;
-        }
+        const e = await auth.getUserEmail();
+        if (!mounted) return;
+        setEmail(e ?? null);
+      } catch {
+        if (!mounted) return;
+        setEmail(null);
+      }
+    }
 
-        const email = auth.getUserEmail();
-        if (!email) {
-          setBillingEnabled(null);
-          return;
-        }
+    loadEmail();
 
-        const baseUrl =
-          process.env.NEXT_PUBLIC_API_URL || "https://api.harmonydesk.ai";
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let mounted = true;
+
+    async function loadBilling() {
+      if (!email) {
+        setBilling(null);
+        return;
+      }
+
+      try {
+        setBillingLoading(true);
 
         const res = await fetch(
-          `${baseUrl}/api/billing/status?email=${encodeURIComponent(email)}`,
+          `${apiBaseUrl}/api/billing/status?email=${encodeURIComponent(email)}`,
           { cache: "no-store" }
         );
 
-        if (!res.ok) {
-          // Safer default: lock down if billing lookup fails
-          setBillingEnabled(false);
-          return;
-        }
+        if (!res.ok) throw new Error("Failed to load billing status");
+        const data = (await res.json()) as BillingStatus;
 
-        const data: BillingStatus = await res.json();
-        setBillingEnabled(Boolean(data.enabled));
+        if (!mounted) return;
+        setBilling(data);
       } catch {
-        // Safer default: lock down if anything fails
-        setBillingEnabled(false);
+        if (!mounted) return;
+        setBilling(null);
+      } finally {
+        if (!mounted) return;
+        setBillingLoading(false);
       }
+    }
+
+    loadBilling();
+
+    return () => {
+      mounted = false;
     };
-
-    run();
-  }, []);
-
-  // When NOT enabled, allow only these pages:
-  const allowedWhenLocked = useMemo(() => {
-    return new Set(["/dashboard", "/billing", "/settings"]);
-  }, []);
-
-  const isLocked = billingEnabled === false;
+  }, [email, apiBaseUrl]);
 
   return (
     <aside className="hidden md:flex flex-col w-64 bg-white border-r border-slate-200 shadow-sm">
@@ -94,15 +116,19 @@ export function Sidebar() {
         </span>
       </div>
 
-      {/* Optional lock notice */}
-      {isLocked && (
-        <div className="mx-3 mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
-          Subscription required to unlock all features.
-          <div className="mt-1 text-amber-800">
-            Go to <span className="font-semibold">Billing</span> to manage your plan.
-          </div>
+      {/* Optional: tiny status line (safe + non-invasive) */}
+      <div className="px-4 py-2 border-b border-slate-200 bg-white">
+        <div className="text-[11px] text-slate-600 truncate">
+          {email ? `Signed in: ${email}` : "Not signed in"}
         </div>
-      )}
+        <div className="text-[11px] text-slate-500">
+          {billingLoading
+            ? "Checking plan…"
+            : billing?.enabled
+            ? `Access: ${billing.status}`
+            : "Access: locked"}
+        </div>
+      </div>
 
       {/* Navigation */}
       <nav className="flex-1 overflow-y-auto px-2 py-4 space-y-1 bg-white">
@@ -110,36 +136,15 @@ export function Sidebar() {
           const Icon = item.icon;
           const active = pathname === item.href;
 
-          const disabled = isLocked && !allowedWhenLocked.has(item.href);
-
-          const baseClass =
-            "flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition";
-
-          const activeClass = active
-            ? "bg-sky-100 text-sky-900 font-semibold"
-            : "text-slate-700 hover:bg-slate-100 hover:text-slate-900";
-
-          const disabledClass =
-            "text-slate-400 bg-white cursor-not-allowed opacity-60";
-
-          if (disabled) {
-            return (
-              <div
-                key={item.href}
-                className={`${baseClass} ${disabledClass}`}
-                title="Locked until subscription is active"
-              >
-                <Icon className="w-4 h-4" />
-                {item.label}
-              </div>
-            );
-          }
-
           return (
             <Link
               key={item.href}
               href={item.href}
-              className={`${baseClass} ${activeClass}`}
+              className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm ${
+                active
+                  ? "bg-sky-100 text-sky-900 font-semibold"
+                  : "text-slate-700 hover:bg-slate-100 hover:text-slate-900"
+              }`}
             >
               <Icon className="w-4 h-4" />
               {item.label}
