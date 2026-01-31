@@ -1,55 +1,76 @@
-import { NextResponse } from "next/server";
-import type { NextRequest } from "next/server";
+import { NextResponse, type NextRequest } from 'next/server'
+import { createServerClient } from '@supabase/ssr'
 
-// 1. Define which paths are protected
+// Keep your existing protected routes list (expanded to match your app)
 const PROTECTED_ROUTES = [
-  "/dashboard",
-  "/cases",
-  "/clients",
-  "/calendar",
-  "/billing",
-  "/messages",
-  "/settings",
-  "/booking-links",
-];
+  '/dashboard',
+  '/cases',
+  '/clients',
+  '/calendar',
+  '/billing',
+  '/messages',
+  '/settings',
+  '/booking-links',
+]
 
-export function middleware(request: NextRequest) {
-  const { pathname } = request.nextUrl;
+export async function middleware(request: NextRequest) {
+  const { pathname } = request.nextUrl
 
-  // 2. Check if the user is trying to access a protected route
+  // Only enforce auth on protected routes
   const isProtectedRoute = PROTECTED_ROUTES.some((route) =>
     pathname.startsWith(route)
-  );
+  )
 
-  if (isProtectedRoute) {
-    // 3. Look for the "Ticket" (Cookie)
-    const session = request.cookies.get("harmony_session");
+  // Always create a response we can attach refreshed cookies to
+  let response = NextResponse.next({
+    request: {
+      headers: request.headers,
+    },
+  })
 
-    // 4. If no ticket, redirect to Login
-    if (!session) {
-      const loginUrl = new URL("/login", request.url);
-      // Optional: Remember where they were trying to go
-      // loginUrl.searchParams.set("from", pathname);
-      return NextResponse.redirect(loginUrl);
+  // Supabase SSR client wired to Next cookies (request in, response out)
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll() {
+          return request.cookies.getAll()
+        },
+        setAll(cookiesToSet) {
+          cookiesToSet.forEach(({ name, value, options }) => {
+            response.cookies.set(name, value, options)
+          })
+        },
+      },
     }
+  )
+
+  // This call refreshes the session if needed and lets us know if user exists
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+
+  if (isProtectedRoute && !user) {
+    const loginUrl = request.nextUrl.clone()
+    loginUrl.pathname = '/login'
+    // Preserve where they were headed (optional but helpful)
+    loginUrl.searchParams.set('next', pathname)
+    return NextResponse.redirect(loginUrl)
   }
 
-  // 5. Allow access if not protected or if they have a ticket
-  return NextResponse.next();
+  return response
 }
 
-// Configure which paths this middleware runs on
 export const config = {
   matcher: [
     /*
-     * Match all request paths except for the ones starting with:
-     * - api (API routes)
-     * - _next/static (static files)
-     * - _next/image (image optimization files)
-     * - favicon.ico (favicon file)
-     * - login (login page)
-     * - / (landing page)
+     * Match all request paths except:
+     * - api routes
+     * - next static/image
+     * - favicon
+     * - public entry pages
      */
-    "/((?!api|_next/static|_next/image|favicon.ico|login|$).*)",
+    '/((?!api|_next/static|_next/image|favicon.ico|$).*)',
   ],
-};
+}
