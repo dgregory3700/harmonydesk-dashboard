@@ -27,13 +27,15 @@ export default function LoginClient({ loadingOverride }: { loadingOverride?: boo
 
     async function consumeHashSession() {
       try {
-        const hash = window.location.hash;
-        if (!hash || !hash.includes("access_token=") || !hash.includes("refresh_token=")) return;
+        if (typeof window === "undefined") return;
+
+        const hash = window.location.hash || "";
+        if (!hash.includes("access_token=") || !hash.includes("refresh_token=")) return;
 
         setLoading(true);
         setError(null);
 
-        const params = new URLSearchParams(hash.replace(/^#/, ""));
+        const params = new URLSearchParams(hash.startsWith("#") ? hash.slice(1) : hash);
         const access_token = params.get("access_token");
         const refresh_token = params.get("refresh_token");
 
@@ -46,7 +48,12 @@ export default function LoginClient({ loadingOverride }: { loadingOverride?: boo
 
         if (setSessionError) throw setSessionError;
 
-        window.history.replaceState({}, document.title, window.location.pathname + window.location.search);
+        // Clear hash safely (no .remove calls / no assumptions)
+        window.history.replaceState(
+          {},
+          document.title,
+          window.location.pathname + window.location.search
+        );
 
         if (!cancelled) router.replace(next);
       } catch (err: any) {
@@ -75,7 +82,11 @@ export default function LoginClient({ loadingOverride }: { loadingOverride?: boo
       setError(null);
       setSent(false);
 
-      // ✅ Redirect to server callback route so cookies are set properly
+      if (typeof window === "undefined") {
+        throw new Error("Browser environment not available.");
+      }
+
+      // Redirect to server callback route so cookies are set properly
       const redirectTo = `${window.location.origin}/auth/callback?next=${encodeURIComponent(next)}`;
 
       const { error: otpError } = await supabase.auth.signInWithOtp({
@@ -143,7 +154,8 @@ export default function LoginClient({ loadingOverride }: { loadingOverride?: boo
         {sent && !error && (
           <div className="mt-4 rounded-lg border border-emerald-900/40 bg-emerald-900/20 p-3">
             <p className="text-xs text-emerald-300">
-              Magic link sent to <span className="font-medium">{email.trim()}</span>. Open your email and click the link to finish signing in.
+              Magic link sent to <span className="font-medium">{email.trim()}</span>. Open your
+              email and click the link to finish signing in.
             </p>
           </div>
         )}
