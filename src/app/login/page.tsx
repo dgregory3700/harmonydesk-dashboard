@@ -1,11 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 
 export default function LoginPage() {
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
+  const router = useRouter();
+  const searchParams = useSearchParams();
 
   const [email, setEmail] = useState("");
   const [loading, setLoading] = useState(false);
@@ -13,10 +16,67 @@ export default function LoginPage() {
   const [error, setError] = useState<string | null>(null);
   const [sent, setSent] = useState(false);
 
-  // simple cooldown to reduce "email rate limit exceeded"
+  // Cooldown to reduce rate limiting
   const [cooldownUntil, setCooldownUntil] = useState<number | null>(null);
-  const cooldownActive =
-    cooldownUntil !== null && Date.now() < cooldownUntil;
+  const cooldownActive = cooldownUntil !== null && Date.now() < cooldownUntil;
+
+  const next = searchParams.get("next") ?? "/dashboard";
+
+  // ✅ NEW: Consume magic-link tokens from URL hash and set session on the client
+  useEffect(() => {
+    let cancelled = false;
+
+    async function consumeHashSession() {
+      try {
+        // Example hash:
+        // #access_token=...&expires_at=...&expires_in=...&refresh_token=...&token_type=bearer&type=magiclink
+        const hash = window.location.hash;
+        if (!hash || !hash.includes("access_token=") || !hash.includes("refresh_token=")) {
+          return;
+        }
+
+        setLoading(true);
+        setError(null);
+
+        const params = new URLSearchParams(hash.replace(/^#/, ""));
+        const access_token = params.get("access_token");
+        const refresh_token = params.get("refresh_token");
+
+        if (!access_token || !refresh_token) {
+          return;
+        }
+
+        const { error: setSessionError } = await supabase.auth.setSession({
+          access_token,
+          refresh_token,
+        });
+
+        if (setSessionError) {
+          throw setSessionError;
+        }
+
+        // Clear the hash from the URL (security + cleanliness)
+        window.history.replaceState({}, document.title, window.location.pathname + window.location.search);
+
+        if (!cancelled) {
+          router.replace(next);
+        }
+      } catch (err: any) {
+        console.error("Failed to consume magic link session from hash:", err);
+        if (!cancelled) {
+          setError(err?.message ?? "Failed to complete sign-in from magic link.");
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+
+    consumeHashSession();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [supabase, router, next]);
 
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -30,20 +90,13 @@ export default function LoginPage() {
       setError(null);
       setSent(false);
 
-      // Preserve where middleware wanted to send them after login
-      // Example: /login?next=/dashboard
-      const params = new URLSearchParams(window.location.search);
-      const next = params.get("next") ?? "/dashboard";
-
-      // Use current origin (works for Vercel previews and production)
-      const redirectTo = `${window.location.origin}/auth/callback?next=${encodeURIComponent(
-        next
-      )}`;
+      // Use current origin; preserve intended destination
+      const redirectTo = `${window.location.origin}/login?next=${encodeURIComponent(next)}`;
 
       const { error: otpError } = await supabase.auth.signInWithOtp({
         email: cleanEmail,
         options: {
-          // IMPORTANT: this URL must be allowed in Supabase Auth > URL Configuration > Redirect URLs
+          // Must be allowed in Supabase Auth > URL Configuration > Redirect URLs
           emailRedirectTo: redirectTo,
         },
       });
@@ -52,8 +105,8 @@ export default function LoginPage() {
 
       setSent(true);
 
-      // 15s cooldown to avoid rapid resends
-      setCooldownUntil(Date.now() + 15_000);
+      // 60s cooldown (rate limit friendly)
+      setCooldownUntil(Date.now() + 60_000);
     } catch (err: any) {
       console.error("Magic link error:", err);
       setError(err?.message ?? "Failed to send magic link.");
@@ -63,7 +116,7 @@ export default function LoginPage() {
   }
 
   const buttonLabel = loading
-    ? "Sending link…"
+    ? "Working…"
     : cooldownActive
     ? "Please wait…"
     : "Send magic link";
@@ -82,10 +135,7 @@ export default function LoginPage() {
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label
-              htmlFor="email"
-              className="block text-sm font-medium text-slate-300"
-            >
+            <label htmlFor="email" className="block text-sm font-medium text-slate-300">
               Email
             </label>
             <input
@@ -113,8 +163,7 @@ export default function LoginPage() {
         {sent && !error && (
           <div className="mt-4 rounded-lg border border-emerald-900/40 bg-emerald-900/20 p-3">
             <p className="text-xs text-emerald-300">
-              Magic link sent to{" "}
-              <span className="font-medium">{email.trim()}</span>. Open your
+              Magic link sent to <span className="font-medium">{email.trim()}</span>. Open your
               email and click the link to finish signing in.
             </p>
           </div>
@@ -131,10 +180,7 @@ export default function LoginPage() {
         </p>
 
         <div className="mt-6 text-center">
-          <Link
-            href="/"
-            className="text-xs text-slate-400 hover:text-slate-200 transition-colors"
-          >
+          <Link href="/" className="text-xs text-slate-400 hover:text-slate-200 transition-colors">
             ← Back to home
           </Link>
         </div>
