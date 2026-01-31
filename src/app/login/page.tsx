@@ -2,32 +2,25 @@
 
 import Link from "next/link";
 import { FormEvent, useMemo, useState } from "react";
-import { createClient, SupabaseClient } from "@supabase/supabase-js";
-
-function getSupabaseClient(): SupabaseClient {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-
-  if (!url || !anonKey) {
-    throw new Error(
-      "Missing NEXT_PUBLIC_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_ANON_KEY in Vercel env vars."
-    );
-  }
-
-  return createClient(url, anonKey);
-}
+import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 
 export default function LoginPage() {
-  const supabase = useMemo(() => getSupabaseClient(), []);
+  const supabase = useMemo(() => createSupabaseBrowserClient(), []);
+
   const [email, setEmail] = useState("");
   const [loading, setLoading] = useState(false);
 
   const [error, setError] = useState<string | null>(null);
   const [sent, setSent] = useState(false);
 
+  // simple cooldown to reduce "email rate limit exceeded"
+  const [cooldownUntil, setCooldownUntil] = useState<number | null>(null);
+  const cooldownActive =
+    cooldownUntil !== null && Date.now() < cooldownUntil;
+
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    if (loading) return;
+    if (loading || cooldownActive) return;
 
     const cleanEmail = email.trim().toLowerCase();
     if (!cleanEmail) return;
@@ -37,17 +30,30 @@ export default function LoginPage() {
       setError(null);
       setSent(false);
 
+      // Preserve where middleware wanted to send them after login
+      // Example: /login?next=/dashboard
+      const params = new URLSearchParams(window.location.search);
+      const next = params.get("next") ?? "/dashboard";
+
+      // Use current origin (works for Vercel previews and production)
+      const redirectTo = `${window.location.origin}/auth/callback?next=${encodeURIComponent(
+        next
+      )}`;
+
       const { error: otpError } = await supabase.auth.signInWithOtp({
         email: cleanEmail,
         options: {
-          // You MUST add this URL in Supabase Auth → URL configuration → Redirect URLs
-          emailRedirectTo: "https://app.harmonydesk.ai/auth/callback",
+          // IMPORTANT: this URL must be allowed in Supabase Auth > URL Configuration > Redirect URLs
+          emailRedirectTo: redirectTo,
         },
       });
 
       if (otpError) throw otpError;
 
       setSent(true);
+
+      // 15s cooldown to avoid rapid resends
+      setCooldownUntil(Date.now() + 15_000);
     } catch (err: any) {
       console.error("Magic link error:", err);
       setError(err?.message ?? "Failed to send magic link.");
@@ -55,6 +61,12 @@ export default function LoginPage() {
       setLoading(false);
     }
   }
+
+  const buttonLabel = loading
+    ? "Sending link…"
+    : cooldownActive
+    ? "Please wait…"
+    : "Send magic link";
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-slate-950">
@@ -84,25 +96,26 @@ export default function LoginPage() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-200 placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
-              placeholder="dgregory37@yahoo.com"
+              placeholder="you@example.com"
               autoComplete="email"
             />
           </div>
 
           <button
             type="submit"
-            disabled={loading}
+            disabled={loading || cooldownActive}
             className="mt-2 w-full rounded-lg bg-sky-600 px-4 py-2 text-sm font-medium text-white hover:bg-sky-500 disabled:opacity-60 focus:outline-none focus:ring-2 focus:ring-sky-500 transition-colors"
           >
-            {loading ? "Sending link…" : "Send magic link"}
+            {buttonLabel}
           </button>
         </form>
 
         {sent && !error && (
           <div className="mt-4 rounded-lg border border-emerald-900/40 bg-emerald-900/20 p-3">
             <p className="text-xs text-emerald-300">
-              Magic link sent to <span className="font-medium">{email.trim()}</span>.
-              Open your email and click the link to finish signing in.
+              Magic link sent to{" "}
+              <span className="font-medium">{email.trim()}</span>. Open your
+              email and click the link to finish signing in.
             </p>
           </div>
         )}
