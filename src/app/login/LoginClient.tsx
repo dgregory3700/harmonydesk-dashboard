@@ -12,27 +12,23 @@ export default function LoginClient({ loadingOverride }: { loadingOverride?: boo
 
   const [email, setEmail] = useState("");
   const [loading, setLoading] = useState(false);
-
   const [error, setError] = useState<string | null>(null);
   const [sent, setSent] = useState(false);
 
-  // Cooldown to reduce rate limiting
+  // 60s cooldown (rate limit friendly)
   const [cooldownUntil, setCooldownUntil] = useState<number | null>(null);
   const cooldownActive = cooldownUntil !== null && Date.now() < cooldownUntil;
 
   const next = searchParams.get("next") ?? "/dashboard";
 
-  // Consume magic-link tokens from URL hash and set session on the client
+  // Fallback: if Supabase returns a hash fragment with tokens, consume it and redirect
   useEffect(() => {
     let cancelled = false;
 
     async function consumeHashSession() {
       try {
         const hash = window.location.hash;
-
-        if (!hash || !hash.includes("access_token=") || !hash.includes("refresh_token=")) {
-          return;
-        }
+        if (!hash || !hash.includes("access_token=") || !hash.includes("refresh_token=")) return;
 
         setLoading(true);
         setError(null);
@@ -50,12 +46,7 @@ export default function LoginClient({ loadingOverride }: { loadingOverride?: boo
 
         if (setSessionError) throw setSessionError;
 
-        // Clear hash from URL
-        window.history.replaceState(
-          {},
-          document.title,
-          window.location.pathname + window.location.search
-        );
+        window.history.replaceState({}, document.title, window.location.pathname + window.location.search);
 
         if (!cancelled) router.replace(next);
       } catch (err: any) {
@@ -84,8 +75,8 @@ export default function LoginClient({ loadingOverride }: { loadingOverride?: boo
       setError(null);
       setSent(false);
 
-      // Use /login as the redirect target since your email link is arriving with #access_token
-      const redirectTo = `${window.location.origin}/login?next=${encodeURIComponent(next)}`;
+      // ✅ Redirect to server callback route so cookies are set properly
+      const redirectTo = `${window.location.origin}/auth/callback?next=${encodeURIComponent(next)}`;
 
       const { error: otpError } = await supabase.auth.signInWithOtp({
         email: cleanEmail,
@@ -118,12 +109,8 @@ export default function LoginClient({ loadingOverride }: { loadingOverride?: boo
     <div className="min-h-screen flex items-center justify-center bg-slate-950">
       <div className="w-full max-w-md bg-slate-900/50 border border-slate-800 rounded-2xl p-8 shadow-lg backdrop-blur-sm">
         <div className="mb-6 text-center">
-          <h1 className="text-2xl font-semibold text-slate-100">
-            Sign in to HarmonyDesk
-          </h1>
-          <p className="mt-2 text-sm text-slate-400">
-            We’ll email you a secure magic link.
-          </p>
+          <h1 className="text-2xl font-semibold text-slate-100">Sign in to HarmonyDesk</h1>
+          <p className="mt-2 text-sm text-slate-400">We’ll email you a secure magic link.</p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
@@ -156,8 +143,7 @@ export default function LoginClient({ loadingOverride }: { loadingOverride?: boo
         {sent && !error && (
           <div className="mt-4 rounded-lg border border-emerald-900/40 bg-emerald-900/20 p-3">
             <p className="text-xs text-emerald-300">
-              Magic link sent to <span className="font-medium">{email.trim()}</span>. Open your
-              email and click the link to finish signing in.
+              Magic link sent to <span className="font-medium">{email.trim()}</span>. Open your email and click the link to finish signing in.
             </p>
           </div>
         )}
@@ -173,7 +159,10 @@ export default function LoginClient({ loadingOverride }: { loadingOverride?: boo
         </p>
 
         <div className="mt-6 text-center">
-          <Link href="/" className="text-xs text-slate-400 hover:text-slate-200 transition-colors">
+          <Link
+            href="https://harmonydesk.ai"
+            className="text-xs text-slate-400 hover:text-slate-200 transition-colors"
+          >
             ← Back to home
           </Link>
         </div>
