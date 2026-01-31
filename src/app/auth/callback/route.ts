@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { createSupabaseServerClient } from '@/lib/supabase/server'
+import { createSupabaseServerClient } from '../../../lib/supabase/server'
 
 export async function GET(request: Request) {
   const { searchParams, origin } = new URL(request.url)
@@ -11,7 +11,7 @@ export async function GET(request: Request) {
     return NextResponse.redirect(`${origin}/login?error=missing_code`)
   }
 
-  const supabase = createSupabaseServerClient()
+  const supabase = await createSupabaseServerClient()
 
   const { error } = await supabase.auth.exchangeCodeForSession(code)
 
