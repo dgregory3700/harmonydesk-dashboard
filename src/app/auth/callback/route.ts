@@ -15,16 +15,23 @@ type CookieSetItem = {
   };
 };
 
+function toLoginError(origin: string, code: string, message?: string) {
+  const u = new URL("/login", origin);
+  u.searchParams.set("error", code);
+  if (message) u.searchParams.set("message", message.slice(0, 300));
+  return NextResponse.redirect(u);
+}
+
 export async function GET(request: NextRequest) {
   const url = request.nextUrl;
   const origin = url.origin;
 
   const code = url.searchParams.get("code");
   const token_hash = url.searchParams.get("token_hash");
-  const type = url.searchParams.get("type"); // magiclink, signup, recovery, etc.
+  const type = url.searchParams.get("type"); // "magiclink", "signup", etc.
   const next = url.searchParams.get("next") ?? "/dashboard";
 
-  // We will attach any Supabase cookies to this response
+  // Response that will carry cookies
   const response = NextResponse.redirect(new URL(next, origin));
 
   const supabase = createServerClient(
@@ -44,26 +51,27 @@ export async function GET(request: NextRequest) {
     }
   );
 
-  // PKCE code flow
+  // 1) PKCE/OAuth code flow
   if (code) {
     const { error } = await supabase.auth.exchangeCodeForSession(code);
     if (error) {
-      return NextResponse.redirect(new URL("/login?error=auth_callback_failed", origin));
+      return toLoginError(origin, "auth_callback_failed", `${error.name}: ${error.message}`);
     }
     return response;
   }
 
-  // token_hash flow (common with email links)
+  // 2) OTP magiclink token_hash flow
   if (token_hash && type) {
     const { error } = await supabase.auth.verifyOtp({
       token_hash,
       type: type as any,
     });
+
     if (error) {
-      return NextResponse.redirect(new URL("/login?error=auth_callback_failed", origin));
+      return toLoginError(origin, "auth_callback_failed", `${error.name}: ${error.message}`);
     }
     return response;
   }
 
-  return NextResponse.redirect(new URL("/login?error=missing_token", origin));
+  return toLoginError(origin, "missing_token", "No code/token_hash in callback URL");
 }
