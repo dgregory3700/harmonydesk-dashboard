@@ -5,18 +5,20 @@ import { FormEvent, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 
-export default function LoginClient({
-  loadingOverride,
-}: {
-  loadingOverride?: boolean;
-}) {
+export default function LoginClient({ loadingOverride }: { loadingOverride?: boolean }) {
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
   const searchParams = useSearchParams();
 
   const [email, setEmail] = useState("");
   const [loading, setLoading] = useState(false);
   const [sent, setSent] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+
+  const urlError = searchParams.get("error");
+  const urlMessage = searchParams.get("message");
+
+  const [error, setError] = useState<string | null>(
+    urlError ? `${urlError}${urlMessage ? ` — ${urlMessage}` : ""}` : null
+  );
 
   const [cooldownUntil, setCooldownUntil] = useState<number | null>(null);
   const cooldownActive = cooldownUntil !== null && Date.now() < cooldownUntil;
@@ -35,9 +37,7 @@ export default function LoginClient({
       setError(null);
       setSent(false);
 
-      const redirectTo = `${window.location.origin}/auth/callback?next=${encodeURIComponent(
-        next
-      )}`;
+      const redirectTo = `${window.location.origin}/auth/callback?next=${encodeURIComponent(next)}`;
 
       const { error: otpError } = await supabase.auth.signInWithOtp({
         email: cleanEmail,
@@ -68,20 +68,13 @@ export default function LoginClient({
     <div className="min-h-screen flex items-center justify-center bg-slate-950">
       <div className="w-full max-w-md bg-slate-900/50 border border-slate-800 rounded-2xl p-8 shadow-lg backdrop-blur-sm">
         <div className="mb-6 text-center">
-          <h1 className="text-2xl font-semibold text-slate-100">
-            Sign in to HarmonyDesk
-          </h1>
-          <p className="mt-2 text-sm text-slate-400">
-            We’ll email you a secure magic link.
-          </p>
+          <h1 className="text-2xl font-semibold text-slate-100">Sign in to HarmonyDesk</h1>
+          <p className="mt-2 text-sm text-slate-400">We’ll email you a secure magic link.</p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label
-              htmlFor="email"
-              className="block text-sm font-medium text-slate-300"
-            >
+            <label htmlFor="email" className="block text-sm font-medium text-slate-300">
               Email
             </label>
             <input
@@ -109,9 +102,8 @@ export default function LoginClient({
         {sent && !error && (
           <div className="mt-4 rounded-lg border border-emerald-900/40 bg-emerald-900/20 p-3">
             <p className="text-xs text-emerald-300">
-              Magic link sent to{" "}
-              <span className="font-medium">{email.trim()}</span>. Open your
-              email and click the link to finish signing in.
+              Magic link sent to <span className="font-medium">{email.trim()}</span>. Open your email
+              and click the link to finish signing in.
             </p>
           </div>
         )}
