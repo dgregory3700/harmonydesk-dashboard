@@ -5,23 +5,33 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 
-export default function LoginClient({ loadingOverride }: { loadingOverride?: boolean }) {
+export default function LoginClient({
+  loadingOverride,
+}: {
+  loadingOverride?: boolean;
+}) {
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
   const router = useRouter();
   const searchParams = useSearchParams();
 
   const [email, setEmail] = useState("");
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [sent, setSent] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  // 60s cooldown (rate limit friendly)
   const [cooldownUntil, setCooldownUntil] = useState<number | null>(null);
   const cooldownActive = cooldownUntil !== null && Date.now() < cooldownUntil;
 
   const next = searchParams.get("next") ?? "/dashboard";
 
-  // Fallback: if Supabase returns a hash fragment with tokens, consume it and redirect
+  // If redirected back with an error param, surface it
+  useEffect(() => {
+    const e = searchParams.get("error");
+    if (e) setError(e);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // ✅ Consume magic-link hash tokens on /login and establish a real session before redirecting
   useEffect(() => {
     let cancelled = false;
 
@@ -30,7 +40,10 @@ export default function LoginClient({ loadingOverride }: { loadingOverride?: boo
         if (typeof window === "undefined") return;
 
         const hash = window.location.hash || "";
-        if (!hash.includes("access_token=") || !hash.includes("refresh_token=")) return;
+        const hasTokens =
+          hash.includes("access_token=") && hash.includes("refresh_token=");
+
+        if (!hasTokens) return;
 
         setLoading(true);
         setError(null);
@@ -39,26 +52,34 @@ export default function LoginClient({ loadingOverride }: { loadingOverride?: boo
         const access_token = params.get("access_token");
         const refresh_token = params.get("refresh_token");
 
-        if (!access_token || !refresh_token) return;
+        if (!access_token || !refresh_token) {
+          throw new Error("Missing access_token or refresh_token in magic link.");
+        }
 
+        // 1) Set session
         const { error: setSessionError } = await supabase.auth.setSession({
           access_token,
           refresh_token,
         });
-
         if (setSessionError) throw setSessionError;
 
-        // Clear hash safely (no .remove calls / no assumptions)
+        // 2) Confirm user exists (this is the key)
+        const { data, error: userError } = await supabase.auth.getUser();
+        if (userError) throw userError;
+        if (!data?.user) throw new Error("No user after setting session.");
+
+        // 3) Clear hash (security + prevents repeat processing)
         window.history.replaceState(
           {},
           document.title,
           window.location.pathname + window.location.search
         );
 
+        // 4) Now redirect
         if (!cancelled) router.replace(next);
       } catch (err: any) {
-        console.error("Failed to consume magic link session from hash:", err);
-        if (!cancelled) setError(err?.message ?? "Failed to complete sign-in from magic link.");
+        console.error("Magic link consume failed:", err);
+        if (!cancelled) setError(err?.message ?? "Failed to complete sign-in.");
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -86,8 +107,10 @@ export default function LoginClient({ loadingOverride }: { loadingOverride?: boo
         throw new Error("Browser environment not available.");
       }
 
-      // Redirect to server callback route so cookies are set properly
-      const redirectTo = `${window.location.origin}/auth/callback?next=${encodeURIComponent(next)}`;
+      // ✅ Make /login the redirect target (since your links already land on /login)
+      const redirectTo = `${window.location.origin}/login?next=${encodeURIComponent(
+        next
+      )}`;
 
       const { error: otpError } = await supabase.auth.signInWithOtp({
         email: cleanEmail,
@@ -101,7 +124,7 @@ export default function LoginClient({ loadingOverride }: { loadingOverride?: boo
       setSent(true);
       setCooldownUntil(Date.now() + 60_000);
     } catch (err: any) {
-      console.error("Magic link error:", err);
+      console.error("Magic link send error:", err);
       setError(err?.message ?? "Failed to send magic link.");
     } finally {
       setLoading(false);
@@ -120,13 +143,20 @@ export default function LoginClient({ loadingOverride }: { loadingOverride?: boo
     <div className="min-h-screen flex items-center justify-center bg-slate-950">
       <div className="w-full max-w-md bg-slate-900/50 border border-slate-800 rounded-2xl p-8 shadow-lg backdrop-blur-sm">
         <div className="mb-6 text-center">
-          <h1 className="text-2xl font-semibold text-slate-100">Sign in to HarmonyDesk</h1>
-          <p className="mt-2 text-sm text-slate-400">We’ll email you a secure magic link.</p>
+          <h1 className="text-2xl font-semibold text-slate-100">
+            Sign in to HarmonyDesk
+          </h1>
+          <p className="mt-2 text-sm text-slate-400">
+            We’ll email you a secure magic link.
+          </p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label htmlFor="email" className="block text-sm font-medium text-slate-300">
+            <label
+              htmlFor="email"
+              className="block text-sm font-medium text-slate-300"
+            >
               Email
             </label>
             <input
@@ -154,7 +184,8 @@ export default function LoginClient({ loadingOverride }: { loadingOverride?: boo
         {sent && !error && (
           <div className="mt-4 rounded-lg border border-emerald-900/40 bg-emerald-900/20 p-3">
             <p className="text-xs text-emerald-300">
-              Magic link sent to <span className="font-medium">{email.trim()}</span>. Open your
+              Magic link sent to{" "}
+              <span className="font-medium">{email.trim()}</span>. Open your
               email and click the link to finish signing in.
             </p>
           </div>
