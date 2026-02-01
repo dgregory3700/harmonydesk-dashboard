@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { FormEvent, useEffect, useMemo, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { FormEvent, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 
 export default function LoginClient({
@@ -11,7 +11,6 @@ export default function LoginClient({
   loadingOverride?: boolean;
 }) {
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
-  const router = useRouter();
   const searchParams = useSearchParams();
 
   const [email, setEmail] = useState("");
@@ -23,73 +22,6 @@ export default function LoginClient({
   const cooldownActive = cooldownUntil !== null && Date.now() < cooldownUntil;
 
   const next = searchParams.get("next") ?? "/dashboard";
-
-  // If redirected back with an error param, surface it
-  useEffect(() => {
-    const e = searchParams.get("error");
-    if (e) setError(e);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // ✅ Consume magic-link hash tokens on /login and establish a real session before redirecting
-  useEffect(() => {
-    let cancelled = false;
-
-    async function consumeHashSession() {
-      try {
-        if (typeof window === "undefined") return;
-
-        const hash = window.location.hash || "";
-        const hasTokens =
-          hash.includes("access_token=") && hash.includes("refresh_token=");
-
-        if (!hasTokens) return;
-
-        setLoading(true);
-        setError(null);
-
-        const params = new URLSearchParams(hash.startsWith("#") ? hash.slice(1) : hash);
-        const access_token = params.get("access_token");
-        const refresh_token = params.get("refresh_token");
-
-        if (!access_token || !refresh_token) {
-          throw new Error("Missing access_token or refresh_token in magic link.");
-        }
-
-        // 1) Set session
-        const { error: setSessionError } = await supabase.auth.setSession({
-          access_token,
-          refresh_token,
-        });
-        if (setSessionError) throw setSessionError;
-
-        // 2) Confirm user exists (this is the key)
-        const { data, error: userError } = await supabase.auth.getUser();
-        if (userError) throw userError;
-        if (!data?.user) throw new Error("No user after setting session.");
-
-        // 3) Clear hash (security + prevents repeat processing)
-        window.history.replaceState(
-          {},
-          document.title,
-          window.location.pathname + window.location.search
-        );
-
-        // 4) Now redirect
-        if (!cancelled) router.replace(next);
-      } catch (err: any) {
-        console.error("Magic link consume failed:", err);
-        if (!cancelled) setError(err?.message ?? "Failed to complete sign-in.");
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    }
-
-    consumeHashSession();
-    return () => {
-      cancelled = true;
-    };
-  }, [supabase, router, next]);
 
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -103,20 +35,13 @@ export default function LoginClient({
       setError(null);
       setSent(false);
 
-      if (typeof window === "undefined") {
-        throw new Error("Browser environment not available.");
-      }
-
-      // ✅ Make /login the redirect target (since your links already land on /login)
-      const redirectTo = `${window.location.origin}/login?next=${encodeURIComponent(
+      const redirectTo = `${window.location.origin}/auth/callback?next=${encodeURIComponent(
         next
       )}`;
 
       const { error: otpError } = await supabase.auth.signInWithOtp({
         email: cleanEmail,
-        options: {
-          emailRedirectTo: redirectTo,
-        },
+        options: { emailRedirectTo: redirectTo },
       });
 
       if (otpError) throw otpError;
