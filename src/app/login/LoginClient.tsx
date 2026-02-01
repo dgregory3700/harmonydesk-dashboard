@@ -37,6 +37,7 @@ export default function LoginClient({ loadingOverride }: { loadingOverride?: boo
       setError(null);
       setSent(false);
 
+      // ✅ Must be /auth/callback so server can exchange code into cookies
       const redirectTo = `${window.location.origin}/auth/callback?next=${encodeURIComponent(next)}`;
 
       const { error: otpError } = await supabase.auth.signInWithOtp({
