@@ -1,20 +1,6 @@
 import { NextResponse, type NextRequest } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 
-type CookieSetItem = {
-  name: string
-  value: string
-  options?: {
-    path?: string
-    domain?: string
-    maxAge?: number
-    expires?: Date
-    httpOnly?: boolean
-    secure?: boolean
-    sameSite?: 'lax' | 'strict' | 'none'
-  }
-}
-
 // Keep your existing protected routes list
 const PROTECTED_ROUTES = [
   '/dashboard',
@@ -46,7 +32,7 @@ export async function middleware(request: NextRequest) {
         getAll() {
           return request.cookies.getAll()
         },
-        setAll(cookiesToSet: CookieSetItem[]) {
+        setAll(cookiesToSet) {
           cookiesToSet.forEach(({ name, value, options }) => {
             response.cookies.set(name, value, options)
           })
