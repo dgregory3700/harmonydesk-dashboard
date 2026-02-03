@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 
@@ -14,6 +14,7 @@ export default function LoginClient({ loadingOverride }: { loadingOverride?: boo
 
   const urlError = searchParams.get("error");
   const urlMessage = searchParams.get("message");
+  const urlEmail = searchParams.get("email");
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -22,8 +23,22 @@ export default function LoginClient({ loadingOverride }: { loadingOverride?: boo
   const [sent, setSent] = useState(false);
 
   const [error, setError] = useState<string | null>(
-    urlError ? `${urlError}${urlMessage ? ` — ${urlMessage}` : ""}` : null
+    urlError ? `${urlError}` : null
   );
+
+  const [notice, setNotice] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (urlEmail && typeof urlEmail === "string") {
+      setEmail(urlEmail.trim().toLowerCase());
+    }
+
+    if (urlMessage === "password_set") {
+      setNotice("Password set successfully. Please sign in to continue.");
+    } else if (urlMessage) {
+      setNotice(urlMessage);
+    }
+  }, [urlEmail, urlMessage]);
 
   const effectiveLoading = loadingOverride ? true : loading;
 
@@ -37,6 +52,7 @@ export default function LoginClient({ loadingOverride }: { loadingOverride?: boo
     try {
       setLoading(true);
       setError(null);
+      setNotice(null);
 
       const { error: loginError } = await supabase.auth.signInWithPassword({
         email: cleanEmail,
@@ -64,9 +80,9 @@ export default function LoginClient({ loadingOverride }: { loadingOverride?: boo
     try {
       setLoading(true);
       setError(null);
+      setNotice(null);
       setSent(false);
 
-      // Secondary fallback; may be rate-limited
       const redirectTo = `${window.location.origin}/auth/callback?next=${encodeURIComponent(next)}`;
 
       const { error: otpError } = await supabase.auth.signInWithOtp({
@@ -96,6 +112,12 @@ export default function LoginClient({ loadingOverride }: { loadingOverride?: boo
             Use your email and password to access your dashboard.
           </p>
         </div>
+
+        {notice && !error && (
+          <div className="mb-4 rounded-lg border border-emerald-900/40 bg-emerald-900/20 p-3">
+            <p className="text-xs text-emerald-300">{notice}</p>
+          </div>
+        )}
 
         {/* Password login */}
         <form onSubmit={handlePasswordLogin} className="space-y-3">
@@ -142,7 +164,6 @@ export default function LoginClient({ loadingOverride }: { loadingOverride?: boo
           </button>
         </form>
 
-        {/* Links */}
         <div className="mt-4 flex items-center justify-between text-xs">
           <Link
             href="/forgot-password"
@@ -159,14 +180,12 @@ export default function LoginClient({ loadingOverride }: { loadingOverride?: boo
           </span>
         </div>
 
-        {/* Divider */}
         <div className="my-6 flex items-center gap-3">
           <div className="h-px flex-1 bg-slate-800" />
           <div className="text-[11px] text-slate-500">Optional</div>
           <div className="h-px flex-1 bg-slate-800" />
         </div>
 
-        {/* Magic link fallback (secondary) */}
         <form onSubmit={handleMagicLink}>
           <button
             type="submit"
