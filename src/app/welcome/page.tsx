@@ -24,16 +24,19 @@ function hasAccessStatus(status?: string | null) {
 export default async function WelcomePage({
   searchParams,
 }: {
-  searchParams: { session_id?: string; email?: string };
+  // Next 15+ can provide searchParams as a Promise
+  searchParams: Promise<{ session_id?: string; email?: string }>;
 }) {
-  const sessionId = searchParams.session_id?.trim();
-  const emailParam = searchParams.email?.trim().toLowerCase();
+  const sp = await searchParams;
+
+  const sessionId = sp.session_id?.trim();
+  const emailParam = sp.email?.trim().toLowerCase();
 
   // If Stripe didn't pass session_id, recover via email → latest paid session lookup.
   if (!sessionId) {
-    // If user submitted email, attempt server-side recovery.
     if (emailParam) {
       const recoveredId = await findLatestCheckoutSessionIdByEmail(emailParam);
+
       if (!recoveredId) {
         return (
           <div className="min-h-screen flex items-center justify-center bg-slate-950 text-slate-200">
@@ -64,8 +67,8 @@ export default async function WelcomePage({
               </form>
 
               <div className="mt-6 text-xs text-slate-500">
-                Tip: If redirects are unreliable, confirm your Stripe redirect URL
-                contains the literal placeholder{" "}
+                Tip: If Stripe redirects don’t include a session id, confirm the redirect
+                URL contains the literal placeholder{" "}
                 <code className="rounded bg-slate-950 px-1 py-0.5 text-slate-300">
                   {"{CHECKOUT_SESSION_ID}"}
                 </code>{" "}
@@ -79,7 +82,6 @@ export default async function WelcomePage({
       redirect(`/welcome?session_id=${encodeURIComponent(recoveredId)}`);
     }
 
-    // First visit without session_id: show email recovery form.
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-950 text-slate-200">
         <div className="w-full max-w-md rounded-2xl border border-slate-800 bg-slate-900/50 p-8">
