@@ -1,3 +1,5 @@
+// src/app/(dashboard)/layout.tsx
+
 import type { ReactNode } from "react";
 import { redirect } from "next/navigation";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
@@ -19,22 +21,22 @@ export default async function DashboardLayout({ children }: DashboardLayoutProps
     redirect("/login?next=/dashboard");
   }
 
-  // 2) Must have an active subscription (email-based, matches your current table)
+  // 2) Must have an allowed subscription status
+  const allowedStatuses = ["active", "trialing"];
+
   const { data: sub, error: subError } = await supabase
     .from("subscriptions")
-    .select("status, user_email, stripe_subscription_id, stripe_customer_id, trial_end_at")
+    .select(
+      "status, user_email, stripe_subscription_id, stripe_customer_id, trial_end_at"
+    )
     .eq("user_email", user.email)
-    .eq("status", "active")
+    .in("status", allowedStatuses)
     .maybeSingle();
 
-  // If no active sub, send to Settings (or Billing) with a message
+  // If no allowed sub, send to Settings with a message
   if (subError || !sub) {
     redirect("/settings?error=inactive_subscription");
   }
 
-  return (
-    <DashboardShell userEmail={user.email}>
-      {children}
-    </DashboardShell>
-  );
+  return <DashboardShell userEmail={user.email}>{children}</DashboardShell>;
 }
