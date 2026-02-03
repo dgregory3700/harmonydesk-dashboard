@@ -84,9 +84,9 @@ export async function POST(req: Request) {
       console.error("Subscription lookup failed:", subError);
       return NextResponse.json({ error: "Subscription lookup failed." }, { status: 500 });
     }
-    if (!sub || sub.status !== "active") {
-      return NextResponse.json({ error: "Subscription inactive." }, { status: 403 });
-    }
+    if (!sub || !["active", "trialing"].includes(sub.status)) {
+  return NextResponse.json({ error: "Subscription inactive." }, { status: 403 });
+}
 
     // 3) Create or update auth user password
     const existingId = await findUserIdByEmail(email);
