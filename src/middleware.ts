@@ -1,21 +1,6 @@
 import { NextResponse, type NextRequest } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 
-type CookieSetItem = {
-  name: string
-  value: string
-  options?: {
-    path?: string
-    domain?: string
-    maxAge?: number
-    expires?: Date
-    httpOnly?: boolean
-    secure?: boolean
-    sameSite?: 'lax' | 'strict' | 'none'
-  }
-}
-
-// Keep your existing protected routes list
 const PROTECTED_ROUTES = [
   '/dashboard',
   '/cases',
@@ -34,7 +19,7 @@ export async function middleware(request: NextRequest) {
     pathname.startsWith(route)
   )
 
-  let response = NextResponse.next({
+  const response = NextResponse.next({
     request: { headers: request.headers },
   })
 
@@ -46,9 +31,17 @@ export async function middleware(request: NextRequest) {
         getAll() {
           return request.cookies.getAll()
         },
-        setAll(cookiesToSet: CookieSetItem[]) {
+        setAll(cookiesToSet) {
           cookiesToSet.forEach(({ name, value, options }) => {
+            // Write to response cookies
             response.cookies.set(name, value, options)
+            
+            // Best-effort sync to request cookies
+            try {
+              request.cookies.set(name, value)
+            } catch {
+              // Ignore errors if request cookies are read-only
+            }
           })
         },
       },
