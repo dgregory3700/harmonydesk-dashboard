@@ -8,6 +8,12 @@ export type StripeCheckoutSession = {
   customer_details?: { email?: string | null };
 };
 
+type StripeListResponse<T> = {
+  object?: string;
+  data?: T[];
+  has_more?: boolean;
+};
+
 function requireStripeKey() {
   const key = process.env.STRIPE_SECRET_KEY;
   if (!key) throw new Error("Missing STRIPE_SECRET_KEY");
@@ -41,29 +47,26 @@ export async function fetchStripeCheckoutSession(sessionId: string) {
 
 /**
  * Fallback: Find the most recent Checkout Session for a given email.
- * Uses Stripe's supported list filter: customer_details[email].
- * (This is exactly what we need when session_id isn't present in the redirect.)
+ * Uses Stripe list filter: customer_details[email]
  */
 export async function findLatestCheckoutSessionIdByEmail(email: string) {
   const cleanEmail = email.trim().toLowerCase();
   if (!cleanEmail) return null;
 
-  // Stripe list endpoint supports filtering by customer_details.email :contentReference[oaicite:3]{index=3}
-  const json = await stripeGet("/v1/checkout/sessions", {
+  const json = (await stripeGet("/v1/checkout/sessions", {
     limit: "10",
     "customer_details[email]": cleanEmail,
-  });
+  })) as StripeListResponse<StripeCheckoutSession>;
 
-  const data = (json?.data ?? []) as StripeCheckoutSession[];
+  const data = Array.isArray(json?.data) ? json.data : [];
+  if (data.length === 0) return null;
 
-  if (!Array.isArray(data) || data.length === 0) return null;
-
-  // Pick the newest session that looks paid/complete
   const sorted = [...data].sort((a, b) => (b.created ?? 0) - (a.created ?? 0));
 
   const good = sorted.find((s) => {
     const paid = s.payment_status === "paid" || s.status === "complete";
-    const hasEmail = (s.customer_details?.email ?? "").trim().toLowerCase() === cleanEmail;
+    const hasEmail =
+      (s.customer_details?.email ?? "").trim().toLowerCase() === cleanEmail;
     return paid && hasEmail;
   });
 
