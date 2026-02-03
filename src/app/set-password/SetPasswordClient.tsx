@@ -1,11 +1,9 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 
 export default function SetPasswordClient() {
-  const supabase = useMemo(() => createSupabaseBrowserClient(), []);
   const router = useRouter();
   const sp = useSearchParams();
 
@@ -34,14 +32,11 @@ export default function SetPasswordClient() {
       const json = await res.json();
       if (!res.ok) throw new Error(json?.error ?? "Failed to set password.");
 
-      const { error: loginError } = await supabase.auth.signInWithPassword({
-        email: json.email,
-        password,
-      });
+      const email = encodeURIComponent(json.email ?? "");
+      const next = encodeURIComponent("/dashboard");
 
-      if (loginError) throw loginError;
-
-      router.replace("/dashboard");
+      // Do NOT auto-login here. Redirect to login with prefill.
+      router.replace(`/login?message=password_set&email=${email}&next=${next}`);
     } catch (e: any) {
       setError(e?.message ?? "Failed.");
     } finally {
@@ -56,7 +51,6 @@ export default function SetPasswordClient() {
         <p className="mt-2 text-sm text-slate-400">
           One-time setup. After this, you’ll sign in with email + password.
         </p>
-
         <div className="mt-6 space-y-3">
           <input
             type="password"
