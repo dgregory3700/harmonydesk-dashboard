@@ -1,37 +1,19 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 
-type CookieSetItem = {
-  name: string;
-  value: string;
-  options?: {
-    path?: string;
-    domain?: string;
-    maxAge?: number;
-    expires?: Date;
-    httpOnly?: boolean;
-    secure?: boolean;
-    sameSite?: "lax" | "strict" | "none";
-  };
-};
-
-function toLoginError(origin: string, code: string, message?: string) {
-  const u = new URL("/login", origin);
-  u.searchParams.set("error", code);
-  if (message) u.searchParams.set("message", message.slice(0, 300));
-  return NextResponse.redirect(u);
-}
-
 export async function GET(request: NextRequest) {
-  const url = request.nextUrl;
-  const origin = url.origin;
+  const requestUrl = new URL(request.url);
 
-  const code = url.searchParams.get("code");
-  const token_hash = url.searchParams.get("token_hash");
-  const type = url.searchParams.get("type"); // "magiclink", "signup", etc.
-  const next = url.searchParams.get("next") ?? "/dashboard";
+  const code = requestUrl.searchParams.get("code");
+  const next = requestUrl.searchParams.get("next") ?? "/dashboard";
+  const origin = requestUrl.origin;
 
-  // Response that will carry cookies
+  // If there's no code, just return to login
+  if (!code) {
+    return NextResponse.redirect(new URL(`/login?next=${encodeURIComponent(next)}`, origin));
+  }
+
+  // Create redirect response early so we can attach cookies to it
   const response = NextResponse.redirect(new URL(next, origin));
 
   const supabase = createServerClient(
@@ -42,7 +24,7 @@ export async function GET(request: NextRequest) {
         getAll() {
           return request.cookies.getAll();
         },
-        setAll(cookiesToSet: CookieSetItem[]) {
+        setAll(cookiesToSet) {
           cookiesToSet.forEach(({ name, value, options }) => {
             response.cookies.set(name, value, options);
           });
@@ -51,27 +33,14 @@ export async function GET(request: NextRequest) {
     }
   );
 
-  // 1) PKCE/OAuth code flow
-  if (code) {
-    const { error } = await supabase.auth.exchangeCodeForSession(code);
-    if (error) {
-      return toLoginError(origin, "auth_callback_failed", `${error.name}: ${error.message}`);
-    }
-    return response;
+  // Exchange code for a session (magic link callback path)
+  const { error } = await supabase.auth.exchangeCodeForSession(code);
+
+  if (error) {
+    return NextResponse.redirect(
+      new URL(`/login?error=auth_callback_failed&message=${encodeURIComponent(error.message)}`, origin)
+    );
   }
 
-  // 2) OTP magiclink token_hash flow
-  if (token_hash && type) {
-    const { error } = await supabase.auth.verifyOtp({
-      token_hash,
-      type: type as any,
-    });
-
-    if (error) {
-      return toLoginError(origin, "auth_callback_failed", `${error.name}: ${error.message}`);
-    }
-    return response;
-  }
-
-  return toLoginError(origin, "missing_token", "No code/token_hash in callback URL");
+  return response;
 }
