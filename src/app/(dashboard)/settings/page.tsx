@@ -56,7 +56,6 @@ export default function SettingsPage() {
 
   // Real identity (Supabase Auth)
   const [sessionEmail, setSessionEmail] = useState<string | null>(null);
-  const [sessionChecking, setSessionChecking] = useState(true);
 
   // Plan & Subscription
   const [billing, setBilling] = useState<BillingStatus | null>(null);
@@ -71,7 +70,6 @@ export default function SettingsPage() {
 
     async function loadSession() {
       try {
-        setSessionChecking(true);
         const { data } = await supabaseBrowser.auth.getSession();
         const email = data.session?.user?.email ?? null;
         if (!mounted) return;
@@ -81,8 +79,6 @@ export default function SettingsPage() {
         console.error("Session load error:", err);
         if (!mounted) return;
         setSessionEmail(null);
-      } finally {
-        if (mounted) setSessionChecking(false);
       }
     }
 
@@ -92,7 +88,6 @@ export default function SettingsPage() {
       (_event, session) => {
         if (!mounted) return;
         setSessionEmail(session?.user?.email ?? null);
-        setSessionChecking(false);
       }
     );
 
@@ -236,34 +231,6 @@ export default function SettingsPage() {
 
   function update<K extends keyof UserSettings>(key: K, value: UserSettings[K]) {
     setSettings((prev) => (prev ? { ...prev, [key]: value } : prev));
-  }
-
-  if (sessionChecking) {
-    return (
-      <div className="space-y-4">
-        <h1 className="text-2xl font-semibold tracking-tight text-slate-100">
-          Settings
-        </h1>
-        <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-6">
-          <p className="text-sm text-slate-400">Checking your session…</p>
-        </div>
-      </div>
-    );
-  }
-
-  if (!sessionEmail) {
-    return (
-      <div className="space-y-4">
-        <h1 className="text-2xl font-semibold tracking-tight text-slate-100">
-          Settings
-        </h1>
-        <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-6">
-          <p className="text-sm text-red-400">
-            You are not signed in. Please go to the login page.
-          </p>
-        </div>
-      </div>
-    );
   }
 
   if (loading) {

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { auth } from "@/lib/auth";
+import { supabaseBrowser } from "@/lib/supabaseBrowser";
 
 export function DashboardGreeting() {
   const [email, setEmail] = useState<string | null>(null);
@@ -11,10 +11,9 @@ export function DashboardGreeting() {
 
     async function run() {
       try {
-        // If your auth helper is async now, await it.
-        const stored = await auth.getUserEmail();
+        const { data } = await supabaseBrowser.auth.getSession();
         if (!mounted) return;
-        setEmail(stored ?? null);
+        setEmail(data.session?.user?.email ?? null);
       } catch {
         if (!mounted) return;
         setEmail(null);
