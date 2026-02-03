@@ -121,7 +121,9 @@ export default async function WelcomePage({
     .maybeSingle();
 
   if (subError) redirect("/login?error=sub_lookup_failed");
-  if (!sub || sub.status !== "active") redirect("/login?error=subscription_inactive");
+  if (!sub || !["active", "trialing"].includes(sub.status)) {
+  redirect("/login?error=subscription_inactive");
+}
 
   // 3) Mint password setup token (one-time)
   const secret = process.env.APP_TOKEN_SECRET;
