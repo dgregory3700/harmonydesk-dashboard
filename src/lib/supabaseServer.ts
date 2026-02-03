@@ -1,21 +1,25 @@
-import { cookies } from "next/headers";
-import { createServerClient } from "@supabase/ssr";
+// src/lib/supabaseServer.ts
+import { createClient } from "@supabase/supabase-js";
 
-export function createSupabaseServerClient() {
-  const cookieStore = cookies();
+/**
+ * Server-only admin client used by API routes.
+ * Uses the Supabase Service Role key.
+ * DO NOT import this into client components.
+ */
 
-  return createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll: () => cookieStore.getAll(),
-        setAll: (cookiesToSet) => {
-          cookiesToSet.forEach(({ name, value, options }) => {
-            cookieStore.set(name, value, options);
-          });
-        },
-      },
-    }
-  );
+const supabaseUrl =
+  process.env.NEXT_PUBLIC_SUPABASE_URL ||
+  process.env.SUPABASE_URL;
+
+const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+if (!supabaseUrl || !serviceRoleKey) {
+  throw new Error("Missing NEXT_PUBLIC_SUPABASE_URL/SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY");
 }
+
+export const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey, {
+  auth: {
+    persistSession: false,
+    autoRefreshToken: false,
+  },
+});
