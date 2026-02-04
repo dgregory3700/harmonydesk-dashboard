@@ -88,8 +88,13 @@ export default function SettingsPage() {
     async function fetchBilling() {
       // Wait for settings to load before fetching billing
       if (loading || !settings?.userEmail) {
-        setBilling(null);
-        setBillingLoading(false);
+        // Keep billingLoading true while settings are loading
+        if (loading) {
+          setBillingLoading(true);
+        } else {
+          setBilling(null);
+          setBillingLoading(false);
+        }
         return;
       }
 
@@ -351,7 +356,7 @@ export default function SettingsPage() {
               <p className="text-xs text-red-400">{billingError}</p>
             )}
 
-            {!billingLoading && billing && settings && (
+            {!billingLoading && billing && settings?.userEmail && (
               <div className="space-y-2 text-xs text-slate-300">
                 <div className="flex justify-between">
                   <span className="text-slate-400">Account</span>
