@@ -86,7 +86,8 @@ export default function SettingsPage() {
   // Load billing status using email from settings
   useEffect(() => {
     async function fetchBilling() {
-      if (!settings?.userEmail) {
+      // Wait for settings to load before fetching billing
+      if (loading || !settings?.userEmail) {
         setBilling(null);
         setBillingLoading(false);
         return;
@@ -116,7 +117,7 @@ export default function SettingsPage() {
     }
 
     fetchBilling();
-  }, [settings?.userEmail]);
+  }, [loading, settings?.userEmail]);
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -350,7 +351,7 @@ export default function SettingsPage() {
               <p className="text-xs text-red-400">{billingError}</p>
             )}
 
-            {!billingLoading && billing && (
+            {!billingLoading && billing && settings && (
               <div className="space-y-2 text-xs text-slate-300">
                 <div className="flex justify-between">
                   <span className="text-slate-400">Account</span>
