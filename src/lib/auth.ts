@@ -15,7 +15,7 @@ export const auth = {
   },
 
   // Kept for compatibility with old code paths.
-  // Login should be handled by magic link flow.
+  // Login should be handled by password-based flow.
   async logIn(_email?: string) {
     return;
   },
