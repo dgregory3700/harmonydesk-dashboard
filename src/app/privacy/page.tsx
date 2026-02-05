@@ -30,7 +30,7 @@ export default function PrivacyPolicyPage() {
         <ul className="list-disc list-inside">
           <li>
             <strong>Account Information:</strong> such as your name, email address,
-            and password or login credentials (including when using magic link login).
+            and password or login credentials.
           </li>
           <li>
             <strong>Workspace &amp; Settings:</strong> configuration details related

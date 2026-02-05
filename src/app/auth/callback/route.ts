@@ -33,7 +33,7 @@ export async function GET(request: NextRequest) {
     }
   );
 
-  // Exchange code for a session (magic link callback path)
+  // Exchange code for a session (OAuth callback path)
   const { error } = await supabase.auth.exchangeCodeForSession(code);
 
   if (error) {
