@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { cookies } from "next/headers";
 import { supabaseAdmin } from "@/lib/supabaseServer";
+import { requireUserEmail } from "@/lib/api/requireUserEmail";
 
 type CaseStatus = "Open" | "Upcoming" | "Closed";
 
@@ -15,28 +15,7 @@ export type MediationCase = {
   notes: string | null;
 };
 
-// NOTE: cookies() is async in recent Next.js
-async function getUserEmail() {
-  const cookieStore = await cookies();
 
-  // Debug: log everything we see
-  const all = cookieStore.getAll();
-  console.log("cookies seen in /api/cases:", all);
-
-  const candidate =
-    cookieStore.get("hd_user_email") ||
-    cookieStore.get("hd-user-email") ||
-    cookieStore.get("user_email") ||
-    cookieStore.get("userEmail") ||
-    cookieStore.get("email");
-
-  if (candidate?.value) {
-    return candidate.value;
-  }
-
-  // fallback single dev mediator
-  return "dev-mediator@harmonydesk.local";
-}
 
 // Initial sample cases (used for first-time seeding per user)
 const seedCases: Omit<MediationCase, "id">[] = [
@@ -82,9 +61,11 @@ function mapRowToCase(row: any): MediationCase {
   };
 }
 
-export async function GET(_req: NextRequest) {
+export async function GET(req: NextRequest) {
   try {
-    const userEmail = await getUserEmail();
+    const auth = await requireUserEmail(req);
+    if (!auth.ok) return auth.response;
+    const userEmail = auth.email;
 
     let { data, error } = await supabaseAdmin
       .from("cases")
@@ -139,7 +120,9 @@ export async function GET(_req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
-    const userEmail = await getUserEmail();
+    const auth = await requireUserEmail(req);
+    if (!auth.ok) return auth.response;
+    const userEmail = auth.email;
     const body = await req.json();
 
     const caseNumber = String(body.caseNumber ?? "").trim();

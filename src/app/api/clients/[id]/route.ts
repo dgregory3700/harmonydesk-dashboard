@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { cookies } from "next/headers";
 import { supabaseAdmin } from "@/lib/supabaseServer";
+import { requireUserEmail } from "@/lib/api/requireUserEmail";
 
 type Client = {
   id: string;
@@ -11,28 +11,7 @@ type Client = {
   notes: string | null;
 };
 
-// NOTE: cookies() is async in recent Next.js
-async function getUserEmail() {
-  const cookieStore = await cookies();
 
-  // Debug: log everything we see
-  const all = cookieStore.getAll();
-  console.log("cookies seen in /api/clients/[id]:", all);
-
-  const candidate =
-    cookieStore.get("hd_user_email") ||
-    cookieStore.get("hd-user-email") ||
-    cookieStore.get("user_email") ||
-    cookieStore.get("userEmail") ||
-    cookieStore.get("email");
-
-  if (candidate?.value) {
-    return candidate.value;
-  }
-
-  // fallback single dev mediator
-  return "dev-mediator@harmonydesk.local";
-}
 
 function mapRowToClient(row: any): Client {
   return {
@@ -46,12 +25,15 @@ function mapRowToClient(row: any): Client {
 }
 
 export async function GET(
-  _req: NextRequest,
+  req: NextRequest,
   context: { params: Promise<{ id: string }> }
 ) {
   try {
+    const auth = await requireUserEmail(req);
+    if (!auth.ok) return auth.response;
+    const userEmail = auth.email;
+    
     const { id } = await context.params;
-    const userEmail = await getUserEmail();
 
     console.log("GET /api/clients/[id]", { id, userEmail });
 
@@ -83,8 +65,11 @@ export async function PATCH(
   context: { params: Promise<{ id: string }> }
 ) {
   try {
+    const auth = await requireUserEmail(req);
+    if (!auth.ok) return auth.response;
+    const userEmail = auth.email;
+    
     const { id } = await context.params;
-    const userEmail = await getUserEmail();
     const body = await req.json();
 
     const update: Record<string, any> = {};
@@ -149,12 +134,15 @@ export async function PATCH(
 }
 
 export async function DELETE(
-  _req: NextRequest,
+  req: NextRequest,
   context: { params: Promise<{ id: string }> }
 ) {
   try {
+    const auth = await requireUserEmail(req);
+    if (!auth.ok) return auth.response;
+    const userEmail = auth.email;
+    
     const { id } = await context.params;
-    const userEmail = await getUserEmail();
 
     console.log("DELETE /api/clients/[id]", { id, userEmail });
 
