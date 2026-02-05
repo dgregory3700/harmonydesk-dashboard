@@ -24,7 +24,7 @@ type AuthResult = AuthSuccess | AuthFailure;
  * const userEmail = auth.email;
  * ```
  */
-export async function requireUserEmail(_request: NextRequest): Promise<AuthResult> {
+export async function requireUserEmail(request: NextRequest): Promise<AuthResult> {
   try {
     const supabase = await createSupabaseServerClient();
     const { data: { user }, error } = await supabase.auth.getUser();
