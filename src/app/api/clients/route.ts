@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { cookies } from "next/headers";
 import { supabaseAdmin } from "@/lib/supabaseServer";
+import { requireUserEmail } from "@/lib/api/requireUserEmail";
 
 export type Client = {
   id: string;
@@ -11,28 +11,7 @@ export type Client = {
   notes: string | null;
 };
 
-// NOTE: cookies() is async in recent Next.js
-async function getUserEmail() {
-  const cookieStore = await cookies();
 
-  // Debug: log everything we see
-  const all = cookieStore.getAll();
-  console.log("cookies seen in /api/clients:", all);
-
-  const candidate =
-    cookieStore.get("hd_user_email") ||
-    cookieStore.get("hd-user-email") ||
-    cookieStore.get("user_email") ||
-    cookieStore.get("userEmail") ||
-    cookieStore.get("email");
-
-  if (candidate?.value) {
-    return candidate.value;
-  }
-
-  // fallback single dev mediator
-  return "dev-mediator@harmonydesk.local";
-}
 
 function mapRowToClient(row: any): Client {
   return {
@@ -47,7 +26,9 @@ function mapRowToClient(row: any): Client {
 
 export async function GET(req: NextRequest) {
   try {
-    const userEmail = await getUserEmail();
+    const auth = await requireUserEmail(req);
+    if (!auth.ok) return auth.response;
+    const userEmail = auth.email;
     const url = new URL(req.url);
     const search = (url.searchParams.get("search") || "").toLowerCase().trim();
 
@@ -91,7 +72,9 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
-    const userEmail = await getUserEmail();
+    const auth = await requireUserEmail(req);
+    if (!auth.ok) return auth.response;
+    const userEmail = auth.email;
     const body = await req.json();
 
     const name = String(body.name ?? "").trim();

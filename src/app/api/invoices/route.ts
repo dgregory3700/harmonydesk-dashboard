@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { cookies } from "next/headers";
 import { supabaseAdmin } from "@/lib/supabaseServer";
+import { requireUserEmail } from "@/lib/api/requireUserEmail";
 
 type InvoiceStatus = "Draft" | "Sent" | "For county report";
 
@@ -15,30 +15,7 @@ type Invoice = {
   due: string;
 };
 
-// NOTE: cookies() is async in recent Next.js
-async function getUserEmail() {
-  const cookieStore = await cookies();
 
-  // Debug: log everything we see
-  const all = cookieStore.getAll();
-  console.log("cookies seen in /api/invoices:", all);
-
-  // Try several possible cookie names
-  const candidate =
-    cookieStore.get("hd_user_email") ||
-    cookieStore.get("hd-user-email") ||
-    cookieStore.get("user_email") ||
-    cookieStore.get("userEmail") ||
-    cookieStore.get("email");
-
-  // If we find a cookie, use it
-  if (candidate?.value) {
-    return candidate.value;
-  }
-
-  // Fallback: single-mediator dev account
-  return "dev-mediator@harmonydesk.local";
-}
 
 // Initial sample invoices (used for first-time seeding per user)
 const seedInvoices = [
@@ -84,9 +61,11 @@ function mapRowToInvoice(row: any): Invoice {
   };
 }
 
-export async function GET(_req: NextRequest) {
+export async function GET(req: NextRequest) {
   try {
-    const userEmail = await getUserEmail();
+    const auth = await requireUserEmail(req);
+    if (!auth.ok) return auth.response;
+    const userEmail = auth.email;
   
     let { data, error } = await supabaseAdmin
       .from("invoices")
@@ -141,7 +120,9 @@ export async function GET(_req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
-    const userEmail = await getUserEmail();
+    const auth = await requireUserEmail(req);
+    if (!auth.ok) return auth.response;
+    const userEmail = auth.email;
     
     const body = await req.json();
 
