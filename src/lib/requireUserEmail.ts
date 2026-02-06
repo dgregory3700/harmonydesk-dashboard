@@ -19,8 +19,9 @@ export async function requireUserEmail(req: NextRequest): Promise<string> {
         getAll() {
           return req.cookies.getAll();
         },
-        setAll() {
-          // No-op for API routes - we don't need to set cookies
+        setAll(cookiesToSet) {
+          // No-op for API routes - we read auth from request but don't modify cookies
+          // API routes should not set cookies; that's handled by middleware
         },
       },
     }
