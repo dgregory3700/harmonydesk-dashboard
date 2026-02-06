@@ -33,3 +33,8 @@ export const supabaseBrowser: SupabaseClient =
 if (typeof window !== "undefined") {
   globalThis.__harmonydeskSupabaseBrowser = supabaseBrowser;
 }
+
+// Backwards-compatible export for components that still use createSupabaseBrowserClient
+export function createSupabaseBrowserClient(): SupabaseClient {
+  return supabaseBrowser;
+}
