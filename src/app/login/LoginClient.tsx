@@ -1,12 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+import { supabaseBrowser } from "@/lib/supabase/client";
 
 export default function LoginClient({ loadingOverride }: { loadingOverride?: boolean }) {
-  const supabase = useMemo(() => createSupabaseBrowserClient(), []);
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -20,7 +19,6 @@ export default function LoginClient({ loadingOverride }: { loadingOverride?: boo
   const [password, setPassword] = useState("");
 
   const [loading, setLoading] = useState(false);
-  const [sent, setSent] = useState(false);
 
   const [error, setError] = useState<string | null>(
     urlError ? `${urlError}` : null
@@ -54,7 +52,7 @@ export default function LoginClient({ loadingOverride }: { loadingOverride?: boo
       setError(null);
       setNotice(null);
 
-      const { error: loginError } = await supabase.auth.signInWithPassword({
+      const { error: loginError } = await supabaseBrowser.auth.signInWithPassword({
         email: cleanEmail,
         password,
       });
@@ -65,37 +63,6 @@ export default function LoginClient({ loadingOverride }: { loadingOverride?: boo
     } catch (err: any) {
       console.error("Password login error:", err);
       setError(err?.message ?? "Login failed.");
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function handleMagicLink(e: FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    if (effectiveLoading) return;
-
-    const cleanEmail = email.trim().toLowerCase();
-    if (!cleanEmail) return;
-
-    try {
-      setLoading(true);
-      setError(null);
-      setNotice(null);
-      setSent(false);
-
-      const redirectTo = `${window.location.origin}/auth/callback?next=${encodeURIComponent(next)}`;
-
-      const { error: otpError } = await supabase.auth.signInWithOtp({
-        email: cleanEmail,
-        options: { emailRedirectTo: redirectTo },
-      });
-
-      if (otpError) throw otpError;
-
-      setSent(true);
-    } catch (err: any) {
-      console.error("Magic link send error:", err);
-      setError(err?.message ?? "Failed to send magic link.");
     } finally {
       setLoading(false);
     }
@@ -179,31 +146,6 @@ export default function LoginClient({ loadingOverride }: { loadingOverride?: boo
             </span>
           </span>
         </div>
-
-        <div className="my-6 flex items-center gap-3">
-          <div className="h-px flex-1 bg-slate-800" />
-          <div className="text-[11px] text-slate-500">Optional</div>
-          <div className="h-px flex-1 bg-slate-800" />
-        </div>
-
-        <form onSubmit={handleMagicLink}>
-          <button
-            type="submit"
-            disabled={effectiveLoading}
-            className="w-full rounded-lg bg-slate-800 px-4 py-2 text-sm font-medium text-slate-200 hover:bg-slate-700 disabled:opacity-60"
-          >
-            {effectiveLoading ? "Working…" : "Send magic link instead"}
-          </button>
-        </form>
-
-        {sent && !error && (
-          <div className="mt-4 rounded-lg border border-emerald-900/40 bg-emerald-900/20 p-3">
-            <p className="text-xs text-emerald-300">
-              Magic link sent to <span className="font-medium">{email.trim()}</span>.
-              Check your email.
-            </p>
-          </div>
-        )}
 
         {error && (
           <div className="mt-4 rounded-lg border border-red-900/40 bg-red-900/20 p-3">
