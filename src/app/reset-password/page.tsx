@@ -1,11 +1,10 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+import { supabaseBrowser } from "@/lib/supabase/client";
 
 export default function ResetPasswordPage() {
-  const supabase = useMemo(() => createSupabaseBrowserClient(), []);
   const router = useRouter();
 
   const [password, setPassword] = useState("");
@@ -21,7 +20,7 @@ export default function ResetPasswordPage() {
       setLoading(true);
       setError(null);
 
-      const { error } = await supabase.auth.updateUser({ password });
+      const { error } = await supabaseBrowser.auth.updateUser({ password });
       if (error) throw error;
 
       router.replace("/dashboard");
