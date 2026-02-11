@@ -1,6 +1,8 @@
 import { DashboardGreeting } from "@/components/dashboard/DashboardGreeting";
 import { SessionsOverview } from "@/components/dashboard/SessionsOverview";
 import { TodayPanel } from "@/components/dashboard/TodayPanel";
+import type { MediationCase } from "@/app/api/cases/route";
+import type { MediationSession } from "@/app/api/sessions/route";
 
 export const dynamic = "force-dynamic";
 
@@ -19,19 +21,24 @@ export default async function DashboardPage() {
 
   // Parse and compute stats
   try {
-    const cases = await casesRes.json();
-    const sessions = await sessionsRes.json();
+    // Check response status before parsing
+    if (!casesRes.ok || !sessionsRes.ok) {
+      throw new Error('Failed to fetch data from API');
+    }
+
+    const cases: MediationCase[] = await casesRes.json();
+    const sessions: MediationSession[] = await sessionsRes.json();
 
     // Count upcoming sessions (not completed and date >= now)
     const now = new Date();
-    upcomingSessions = sessions.filter((session: any) => {
+    upcomingSessions = sessions.filter((session) => {
       if (session.completed) return false;
       const sessionDate = new Date(session.date);
       return sessionDate >= now;
     }).length;
 
     // Count new inquiries (cases with "Open" status)
-    newInquiries = cases.filter((c: any) => c.status === "Open").length;
+    newInquiries = cases.filter((c) => c.status === "Open").length;
   } catch (error) {
     console.error("Error fetching dashboard stats:", error);
     // Keep default values of 0 if fetch fails
