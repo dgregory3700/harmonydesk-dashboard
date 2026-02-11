@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { cookies } from "next/headers";
-import { supabaseAdmin } from "@/lib/supabaseServer";
+import { requireAuthedSupabase } from "@/lib/authServer";
 
 export type Client = {
   id: string;
@@ -10,29 +9,6 @@ export type Client = {
   phone: string | null;
   notes: string | null;
 };
-
-// NOTE: cookies() is async in recent Next.js
-async function getUserEmail() {
-  const cookieStore = await cookies();
-
-  // Debug: log everything we see
-  const all = cookieStore.getAll();
-  console.log("cookies seen in /api/clients:", all);
-
-  const candidate =
-    cookieStore.get("hd_user_email") ||
-    cookieStore.get("hd-user-email") ||
-    cookieStore.get("user_email") ||
-    cookieStore.get("userEmail") ||
-    cookieStore.get("email");
-
-  if (candidate?.value) {
-    return candidate.value;
-  }
-
-  // fallback single dev mediator
-  return "dev-mediator@harmonydesk.local";
-}
 
 function mapRowToClient(row: any): Client {
   return {
@@ -47,17 +23,19 @@ function mapRowToClient(row: any): Client {
 
 export async function GET(req: NextRequest) {
   try {
-    const userEmail = await getUserEmail();
+    const auth = await requireAuthedSupabase();
+    if (!auth.ok) return auth.res;
+
+    const { supabase, userEmail } = auth;
+
     const url = new URL(req.url);
     const search = (url.searchParams.get("search") || "").toLowerCase().trim();
 
-    let query = supabaseAdmin
+    const { data, error } = await supabase
       .from("clients")
       .select("*")
       .eq("user_email", userEmail)
       .order("created_at", { ascending: false });
-
-    const { data, error } = await query;
 
     if (error) {
       console.error("Supabase GET /api/clients error:", error);
@@ -91,7 +69,11 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
-    const userEmail = await getUserEmail();
+    const auth = await requireAuthedSupabase();
+    if (!auth.ok) return auth.res;
+
+    const { supabase, userEmail } = auth;
+
     const body = await req.json();
 
     const name = String(body.name ?? "").trim();
@@ -115,7 +97,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const { data, error } = await supabaseAdmin
+    const { data, error } = await supabase
       .from("clients")
       .insert({
         user_email: userEmail,
@@ -135,8 +117,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const client = mapRowToClient(data);
-    return NextResponse.json(client, { status: 201 });
+    return NextResponse.json(mapRowToClient(data), { status: 201 });
   } catch (err) {
     console.error("Unexpected POST /api/clients error:", err);
     return NextResponse.json({ error: "Server error" }, { status: 500 });
