@@ -1,3 +1,5 @@
+// src/app/api/invoices/[id]/route.ts
+
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuthedSupabase } from "@/lib/authServer";
 
@@ -29,14 +31,14 @@ function mapRowToInvoice(row: any): Invoice {
 
 export async function PATCH(
   req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  context: { params: { id: string } }
 ) {
   try {
     const auth = await requireAuthedSupabase();
     if (!auth.ok) return auth.res;
 
-    const { id } = await params;
     const { supabase, userEmail } = auth;
+    const { id } = context.params;
 
     const body = await req.json();
     const status = body.status as InvoiceStatus | undefined;
@@ -70,14 +72,14 @@ export async function PATCH(
 
 export async function DELETE(
   _req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  context: { params: { id: string } }
 ) {
   try {
     const auth = await requireAuthedSupabase();
     if (!auth.ok) return auth.res;
 
-    const { id } = await params;
     const { supabase, userEmail } = auth;
+    const { id } = context.params;
 
     const { error } = await supabase
       .from("invoices")
