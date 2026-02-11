@@ -14,7 +14,7 @@ import {
   FileText,
 } from "lucide-react";
 
-import { auth } from "@/lib/auth";
+import { supabaseBrowser } from "@/lib/supabase/client";
 
 type BillingStatus = {
   user_email: string;
@@ -43,8 +43,6 @@ export function Sidebar() {
   const [billingLoading, setBillingLoading] = useState(false);
 
   const apiBaseUrl = useMemo(() => {
-    // In the browser, NEXT_PUBLIC_* is available.
-    // Fallback keeps things working even if env is missing.
     return process.env.NEXT_PUBLIC_API_URL || "https://api.harmonydesk.ai";
   }, []);
 
@@ -53,9 +51,9 @@ export function Sidebar() {
 
     async function loadEmail() {
       try {
-        const e = await auth.getUserEmail();
+        const { data } = await supabaseBrowser.auth.getUser();
         if (!mounted) return;
-        setEmail(e ?? null);
+        setEmail(data.user?.email ?? null);
       } catch {
         if (!mounted) return;
         setEmail(null);
@@ -109,17 +107,15 @@ export function Sidebar() {
 
   return (
     <aside className="hidden md:flex flex-col w-64 bg-white border-r border-slate-200 shadow-sm">
-      {/* Brand / logo bar */}
       <div className="h-16 flex items-center px-4 border-b border-slate-200 bg-white">
         <span className="text-lg font-semibold text-slate-900">
           <span className="text-sky-600">Harmony</span>Desk
         </span>
       </div>
 
-      {/* Optional: tiny status line (safe + non-invasive) */}
       <div className="px-4 py-2 border-b border-slate-200 bg-white">
         <div className="text-[11px] text-slate-600 truncate">
-          {email ? `Signed in: ${email}` : "Not signed in"}
+          {email ? `Signed in: ${email}` : "Signed in: (unknown)"}
         </div>
         <div className="text-[11px] text-slate-500">
           {billingLoading
@@ -130,7 +126,6 @@ export function Sidebar() {
         </div>
       </div>
 
-      {/* Navigation */}
       <nav className="flex-1 overflow-y-auto px-2 py-4 space-y-1 bg-white">
         {navItems.map((item) => {
           const Icon = item.icon;
@@ -153,7 +148,6 @@ export function Sidebar() {
         })}
       </nav>
 
-      {/* Footer */}
       <div className="p-4 border-t border-slate-200 text-xs text-slate-500 bg-white">
         © {new Date().getFullYear()} HarmonyDesk
       </div>
