@@ -25,14 +25,14 @@ function mapRowToSession(row: any): MediationSession {
 
 export async function GET(
   _req: NextRequest,
-  context: { params: Promise<{ id: string }> }
+  { params }: { params: { id: string } }
 ) {
   try {
     const auth = await requireAuthedSupabase();
     if (!auth.ok) return auth.res;
 
     const { supabase, userEmail } = auth;
-    const { id } = await context.params;
+    const { id } = params;
 
     const { data, error } = await supabase
       .from("sessions")
@@ -54,16 +54,16 @@ export async function GET(
 
 export async function PATCH(
   req: NextRequest,
-  context: { params: Promise<{ id: string }> }
+  { params }: { params: { id: string } }
 ) {
   try {
     const auth = await requireAuthedSupabase();
     if (!auth.ok) return auth.res;
 
     const { supabase, userEmail } = auth;
-    const { id } = await context.params;
-    const body = await req.json();
+    const { id } = params;
 
+    const body = await req.json();
     const update: Record<string, any> = {};
 
     if (body.date !== undefined) {
@@ -114,14 +114,14 @@ export async function PATCH(
 
 export async function DELETE(
   _req: NextRequest,
-  context: { params: Promise<{ id: string }> }
+  { params }: { params: { id: string } }
 ) {
   try {
     const auth = await requireAuthedSupabase();
     if (!auth.ok) return auth.res;
 
     const { supabase, userEmail } = auth;
-    const { id } = await context.params;
+    const { id } = params;
 
     const { error } = await supabase
       .from("sessions")
