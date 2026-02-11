@@ -31,7 +31,6 @@ export default function Topbar() {
         setEmail(sessionEmail);
 
         if (!sessionEmail) {
-          // Do not redirect here; middleware/layout owns auth gating.
           setBilling(null);
           return;
         }
@@ -45,8 +44,8 @@ export default function Topbar() {
         );
 
         if (!res.ok) throw new Error("Billing status fetch failed");
-        const b = (await res.json()) as BillingStatus;
 
+        const b = (await res.json()) as BillingStatus;
         if (!mounted) return;
         setBilling(b);
       } catch (err) {
@@ -107,4 +106,22 @@ export default function Topbar() {
   return (
     <header className="h-16 border-b border-slate-200 bg-white flex items-center justify-between px-6 text-slate-900">
       <div className="flex flex-col gap-1">
-        <span className="text-sm text-slate-700">Welcome back 👋</span
+        <span className="text-sm text-slate-700">Welcome back 👋</span>
+        <div className="flex items-center gap-2">
+          {email && (
+            <span className="text-xs font-medium text-slate-900">{email}</span>
+          )}
+          {renderBillingBadge()}
+        </div>
+      </div>
+
+      <button
+        type="button"
+        onClick={handleLogout}
+        className="text-xs px-3 py-1 rounded-full border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 transition"
+      >
+        Log out
+      </button>
+    </header>
+  );
+}
