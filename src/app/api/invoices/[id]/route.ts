@@ -3,6 +3,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuthedSupabase } from "@/lib/authServer";
 
+type IdContext = { params: Promise<{ id: string }> };
+
 type InvoiceStatus = "Draft" | "Sent" | "For county report";
 
 type Invoice = {
@@ -31,14 +33,14 @@ function mapRowToInvoice(row: any): Invoice {
 
 export async function PATCH(
   req: NextRequest,
-  context: { params: { id: string } }
+  context: IdContext
 ) {
   try {
     const auth = await requireAuthedSupabase();
     if (!auth.ok) return auth.res;
 
     const { supabase, userEmail } = auth;
-    const { id } = context.params;
+    const { id } = await context.params;
 
     const body = await req.json();
     const status = body.status as InvoiceStatus | undefined;
@@ -72,14 +74,14 @@ export async function PATCH(
 
 export async function DELETE(
   _req: NextRequest,
-  context: { params: { id: string } }
+  context: IdContext
 ) {
   try {
     const auth = await requireAuthedSupabase();
     if (!auth.ok) return auth.res;
 
     const { supabase, userEmail } = auth;
-    const { id } = context.params;
+    const { id } = await context.params;
 
     const { error } = await supabase
       .from("invoices")

@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuthedSupabase } from "@/lib/authServer";
 
+type IdContext = { params: Promise<{ id: string }> };
+
 type MediationSession = {
   id: string;
   userEmail: string;
@@ -25,14 +27,14 @@ function mapRowToSession(row: any): MediationSession {
 
 export async function GET(
   _req: NextRequest,
-  { params }: { params: { id: string } }
+  context: IdContext
 ) {
   try {
     const auth = await requireAuthedSupabase();
     if (!auth.ok) return auth.res;
 
     const { supabase, userEmail } = auth;
-    const { id } = params;
+    const { id } = await context.params;
 
     const { data, error } = await supabase
       .from("sessions")
@@ -54,14 +56,14 @@ export async function GET(
 
 export async function PATCH(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  context: IdContext
 ) {
   try {
     const auth = await requireAuthedSupabase();
     if (!auth.ok) return auth.res;
 
     const { supabase, userEmail } = auth;
-    const { id } = params;
+    const { id } = await context.params;
 
     const body = await req.json();
     const update: Record<string, any> = {};
@@ -114,14 +116,14 @@ export async function PATCH(
 
 export async function DELETE(
   _req: NextRequest,
-  { params }: { params: { id: string } }
+  context: IdContext
 ) {
   try {
     const auth = await requireAuthedSupabase();
     if (!auth.ok) return auth.res;
 
     const { supabase, userEmail } = auth;
-    const { id } = params;
+    const { id } = await context.params;
 
     const { error } = await supabase
       .from("sessions")
