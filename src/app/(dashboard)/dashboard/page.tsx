@@ -22,17 +22,20 @@ export default async function DashboardPage() {
   // Parse and compute stats
   try {
     // Check response status before parsing
-    if (!casesRes.ok || !sessionsRes.ok) {
-      throw new Error(`Failed to fetch data: cases=${casesRes.status}, sessions=${sessionsRes.status}`);
+    if (!casesRes.ok) {
+      throw new Error(`Failed to fetch cases: ${casesRes.status}`);
+    }
+    if (!sessionsRes.ok) {
+      throw new Error(`Failed to fetch sessions: ${sessionsRes.status}`);
     }
 
     const cases: MediationCase[] = await casesRes.json();
     const sessions: MediationSession[] = await sessionsRes.json();
 
     // Count upcoming sessions (not completed and date >= now)
-    const now = new Date();
+    const nowIso = new Date().toISOString();
     upcomingSessions = sessions.filter((session) => 
-      !session.completed && new Date(session.date) >= now
+      !session.completed && session.date >= nowIso
     ).length;
 
     // Count new inquiries (cases with "Open" status)
