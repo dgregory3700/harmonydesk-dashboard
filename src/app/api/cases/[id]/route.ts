@@ -29,14 +29,14 @@ function mapRowToCase(row: any): MediationCase {
 
 export async function GET(
   _req: NextRequest,
-  context: { params: Promise<{ id: string }> }
+  { params }: { params: { id: string } }
 ) {
   try {
     const auth = await requireAuthedSupabase();
     if (!auth.ok) return auth.res;
 
     const { supabase, userEmail } = auth;
-    const { id } = await context.params;
+    const { id } = params;
 
     const { data, error } = await supabase
       .from("cases")
@@ -58,37 +58,29 @@ export async function GET(
 
 export async function PATCH(
   req: NextRequest,
-  context: { params: Promise<{ id: string }> }
+  { params }: { params: { id: string } }
 ) {
   try {
     const auth = await requireAuthedSupabase();
     if (!auth.ok) return auth.res;
 
     const { supabase, userEmail } = auth;
-    const { id } = await context.params;
+    const { id } = params;
 
     const body = await req.json();
     const update: Record<string, any> = {};
 
-    if (body.caseNumber !== undefined) {
-      update.case_number = String(body.caseNumber).trim();
-    }
-    if (body.matter !== undefined) {
-      update.matter = String(body.matter).trim();
-    }
-    if (body.parties !== undefined) {
-      update.parties = String(body.parties).trim();
-    }
-    if (body.county !== undefined) {
-      update.county = String(body.county).trim();
-    }
-    if (body.status !== undefined) {
-      update.status = body.status as CaseStatus;
-    }
+    if (body.caseNumber !== undefined) update.case_number = String(body.caseNumber).trim();
+    if (body.matter !== undefined) update.matter = String(body.matter).trim();
+    if (body.parties !== undefined) update.parties = String(body.parties).trim();
+    if (body.county !== undefined) update.county = String(body.county).trim();
+    if (body.status !== undefined) update.status = body.status as CaseStatus;
+
     if (body.nextSessionDate !== undefined) {
       const val = String(body.nextSessionDate).trim();
       update.next_session_date = val || null;
     }
+
     if (body.notes !== undefined) {
       const val = String(body.notes).trim();
       update.notes = val || null;
@@ -108,10 +100,7 @@ export async function PATCH(
 
     if (error || !data) {
       console.error("Supabase PATCH case error:", error);
-      return NextResponse.json(
-        { error: "Failed to update case" },
-        { status: 500 }
-      );
+      return NextResponse.json({ error: "Failed to update case" }, { status: 500 });
     }
 
     return NextResponse.json(mapRowToCase(data));
@@ -123,14 +112,14 @@ export async function PATCH(
 
 export async function DELETE(
   _req: NextRequest,
-  context: { params: Promise<{ id: string }> }
+  { params }: { params: { id: string } }
 ) {
   try {
     const auth = await requireAuthedSupabase();
     if (!auth.ok) return auth.res;
 
     const { supabase, userEmail } = auth;
-    const { id } = await context.params;
+    const { id } = params;
 
     const { error } = await supabase
       .from("cases")
@@ -140,10 +129,7 @@ export async function DELETE(
 
     if (error) {
       console.error("Supabase DELETE case error:", error);
-      return NextResponse.json(
-        { error: "Failed to delete case" },
-        { status: 500 }
-      );
+      return NextResponse.json({ error: "Failed to delete case" }, { status: 500 });
     }
 
     return NextResponse.json({ success: true }, { status: 200 });
