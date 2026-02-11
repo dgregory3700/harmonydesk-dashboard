@@ -29,12 +29,13 @@ function mapRowToInvoice(row: any): Invoice {
 
 export async function PATCH(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const auth = await requireAuthedSupabase();
     if (!auth.ok) return auth.res;
 
+    const { id } = await params;
     const { supabase, userEmail } = auth;
 
     const body = await req.json();
@@ -47,7 +48,7 @@ export async function PATCH(
     const { data, error } = await supabase
       .from("invoices")
       .update({ status })
-      .eq("id", params.id)
+      .eq("id", id)
       .eq("user_email", userEmail)
       .select("*")
       .single();
@@ -69,18 +70,19 @@ export async function PATCH(
 
 export async function DELETE(
   _req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const auth = await requireAuthedSupabase();
     if (!auth.ok) return auth.res;
 
+    const { id } = await params;
     const { supabase, userEmail } = auth;
 
     const { error } = await supabase
       .from("invoices")
       .delete()
-      .eq("id", params.id)
+      .eq("id", id)
       .eq("user_email", userEmail);
 
     if (error) {
