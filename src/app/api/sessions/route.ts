@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { cookies } from "next/headers";
-import { supabaseAdmin } from "@/lib/supabaseServer";
+import { requireAuthedSupabase } from "@/lib/authServer";
 
 export type MediationSession = {
   id: string;
@@ -11,29 +10,6 @@ export type MediationSession = {
   notes: string | null;
   completed: boolean;
 };
-
-// NOTE: cookies() is async in recent Next.js
-async function getUserEmail() {
-  const cookieStore = await cookies();
-
-  // Debug: log everything we see
-  const all = cookieStore.getAll();
-  console.log("cookies seen in /api/sessions:", all);
-
-  const candidate =
-    cookieStore.get("hd_user_email") ||
-    cookieStore.get("hd-user-email") ||
-    cookieStore.get("user_email") ||
-    cookieStore.get("userEmail") ||
-    cookieStore.get("email");
-
-  if (candidate?.value) {
-    return candidate.value;
-  }
-
-  // fallback single dev mediator
-  return "dev-mediator@harmonydesk.local";
-}
 
 function mapRowToSession(row: any): MediationSession {
   return {
@@ -49,11 +25,15 @@ function mapRowToSession(row: any): MediationSession {
 
 export async function GET(req: NextRequest) {
   try {
-    const userEmail = await getUserEmail();
+    const auth = await requireAuthedSupabase();
+    if (!auth.ok) return auth.res;
+
+    const { supabase, userEmail } = auth;
+
     const url = new URL(req.url);
     const caseId = url.searchParams.get("caseId");
 
-    let query = supabaseAdmin
+    let query = supabase
       .from("sessions")
       .select("*")
       .eq("user_email", userEmail)
@@ -73,8 +53,7 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    const sessions = (data ?? []).map(mapRowToSession);
-    return NextResponse.json(sessions);
+    return NextResponse.json((data ?? []).map(mapRowToSession));
   } catch (err) {
     console.error("Unexpected GET /api/sessions error:", err);
     return NextResponse.json({ error: "Server error" }, { status: 500 });
@@ -83,16 +62,18 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
-    const userEmail = await getUserEmail();
+    const auth = await requireAuthedSupabase();
+    if (!auth.ok) return auth.res;
+
+    const { supabase, userEmail } = auth;
+
     const body = await req.json();
 
     const caseId = String(body.caseId ?? "").trim();
     const date = String(body.date ?? "").trim();
     const durationHoursRaw = body.durationHours ?? body.duration_hours ?? 1;
     const notes =
-      body.notes && String(body.notes).trim()
-        ? String(body.notes)
-        : null;
+      body.notes && String(body.notes).trim() ? String(body.notes) : null;
     const completed = Boolean(body.completed ?? false);
 
     const durationHours = Number.parseFloat(String(durationHoursRaw));
@@ -104,7 +85,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const { data, error } = await supabaseAdmin
+    const { data, error } = await supabase
       .from("sessions")
       .insert({
         user_email: userEmail,
@@ -125,8 +106,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const session = mapRowToSession(data);
-    return NextResponse.json(session, { status: 201 });
+    return NextResponse.json(mapRowToSession(data), { status: 201 });
   } catch (err) {
     console.error("Unexpected POST /api/sessions error:", err);
     return NextResponse.json({ error: "Server error" }, { status: 500 });
