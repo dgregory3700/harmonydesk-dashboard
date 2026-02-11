@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { supabaseBrowser } from "@/lib/supabaseBrowser";
+import { supabaseBrowser } from "@/lib/supabase/client";
 
 type BillingStatus = {
   user_email: string;
@@ -24,16 +24,17 @@ export default function Topbar() {
 
     async function run() {
       try {
-        const { data } = await supabaseBrowser.auth.getSession();
-        const sessionEmail = data.session?.user?.email ?? null;
-
-        if (!sessionEmail) {
-          router.replace("/login");
-          return;
-        }
+        const { data } = await supabaseBrowser.auth.getUser();
+        const sessionEmail = data.user?.email ?? null;
 
         if (!mounted) return;
         setEmail(sessionEmail);
+
+        if (!sessionEmail) {
+          // Do not redirect here; middleware/layout owns auth gating.
+          setBilling(null);
+          return;
+        }
 
         const baseUrl =
           process.env.NEXT_PUBLIC_API_URL || "https://api.harmonydesk.ai";
@@ -44,19 +45,14 @@ export default function Topbar() {
         );
 
         if (!res.ok) throw new Error("Billing status fetch failed");
-
         const b = (await res.json()) as BillingStatus;
+
         if (!mounted) return;
         setBilling(b);
-
-        if (!b.enabled) {
-          router.replace("/settings");
-          return;
-        }
       } catch (err) {
         console.error("Topbar error:", err);
-        router.replace("/login");
-        return;
+        if (!mounted) return;
+        setBilling(null);
       } finally {
         if (mounted) setLoading(false);
       }
@@ -67,7 +63,7 @@ export default function Topbar() {
     return () => {
       mounted = false;
     };
-  }, [router]);
+  }, []);
 
   async function handleLogout() {
     await supabaseBrowser.auth.signOut();
@@ -111,22 +107,4 @@ export default function Topbar() {
   return (
     <header className="h-16 border-b border-slate-200 bg-white flex items-center justify-between px-6 text-slate-900">
       <div className="flex flex-col gap-1">
-        <span className="text-sm text-slate-700">Welcome back 👋</span>
-        <div className="flex items-center gap-2">
-          {email && (
-            <span className="text-xs font-medium text-slate-900">{email}</span>
-          )}
-          {renderBillingBadge()}
-        </div>
-      </div>
-
-      <button
-        type="button"
-        onClick={handleLogout}
-        className="text-xs px-3 py-1 rounded-full border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 transition"
-      >
-        Log out
-      </button>
-    </header>
-  );
-}
+        <span className="text-sm text-slate-700">Welcome back 👋</span
