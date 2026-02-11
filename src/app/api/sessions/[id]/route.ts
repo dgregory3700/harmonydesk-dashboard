@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { cookies } from "next/headers";
-import { supabaseAdmin } from "@/lib/supabaseServer";
+import { requireAuthedSupabase } from "@/lib/authServer";
 
 type MediationSession = {
   id: string;
@@ -11,29 +10,6 @@ type MediationSession = {
   notes: string | null;
   completed: boolean;
 };
-
-// NOTE: cookies() is async in recent Next.js
-async function getUserEmail() {
-  const cookieStore = await cookies();
-
-  // Debug: log everything we see
-  const all = cookieStore.getAll();
-  console.log("cookies seen in /api/sessions/[id]:", all);
-
-  const candidate =
-    cookieStore.get("hd_user_email") ||
-    cookieStore.get("hd-user-email") ||
-    cookieStore.get("user_email") ||
-    cookieStore.get("userEmail") ||
-    cookieStore.get("email");
-
-  if (candidate?.value) {
-    return candidate.value;
-  }
-
-  // fallback single dev mediator
-  return "dev-mediator@harmonydesk.local";
-}
 
 function mapRowToSession(row: any): MediationSession {
   return {
@@ -52,12 +28,13 @@ export async function GET(
   context: { params: Promise<{ id: string }> }
 ) {
   try {
+    const auth = await requireAuthedSupabase();
+    if (!auth.ok) return auth.res;
+
+    const { supabase, userEmail } = auth;
     const { id } = await context.params;
-    const userEmail = await getUserEmail();
 
-    console.log("GET /api/sessions/[id]", { id, userEmail });
-
-    const { data, error } = await supabaseAdmin
+    const { data, error } = await supabase
       .from("sessions")
       .select("*")
       .eq("id", id)
@@ -65,15 +42,10 @@ export async function GET(
       .single();
 
     if (error || !data) {
-      console.error("Supabase GET session error:", error);
-      return NextResponse.json(
-        { error: "Session not found" },
-        { status: 404 }
-      );
+      return NextResponse.json({ error: "Session not found" }, { status: 404 });
     }
 
-    const session = mapRowToSession(data);
-    return NextResponse.json(session);
+    return NextResponse.json(mapRowToSession(data));
   } catch (err) {
     console.error("Unexpected GET /api/sessions/[id] error:", err);
     return NextResponse.json({ error: "Server error" }, { status: 500 });
@@ -85,8 +57,11 @@ export async function PATCH(
   context: { params: Promise<{ id: string }> }
 ) {
   try {
+    const auth = await requireAuthedSupabase();
+    if (!auth.ok) return auth.res;
+
+    const { supabase, userEmail } = auth;
     const { id } = await context.params;
-    const userEmail = await getUserEmail();
     const body = await req.json();
 
     const update: Record<string, any> = {};
@@ -111,15 +86,10 @@ export async function PATCH(
     }
 
     if (Object.keys(update).length === 0) {
-      return NextResponse.json(
-        { error: "Nothing to update" },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "Nothing to update" }, { status: 400 });
     }
 
-    console.log("PATCH /api/sessions/[id]", { id, userEmail, update });
-
-    const { data, error } = await supabaseAdmin
+    const { data, error } = await supabase
       .from("sessions")
       .update(update)
       .eq("id", id)
@@ -135,8 +105,7 @@ export async function PATCH(
       );
     }
 
-    const session = mapRowToSession(data);
-    return NextResponse.json(session);
+    return NextResponse.json(mapRowToSession(data));
   } catch (err) {
     console.error("Unexpected PATCH /api/sessions/[id] error:", err);
     return NextResponse.json({ error: "Server error" }, { status: 500 });
@@ -148,12 +117,13 @@ export async function DELETE(
   context: { params: Promise<{ id: string }> }
 ) {
   try {
+    const auth = await requireAuthedSupabase();
+    if (!auth.ok) return auth.res;
+
+    const { supabase, userEmail } = auth;
     const { id } = await context.params;
-    const userEmail = await getUserEmail();
 
-    console.log("DELETE /api/sessions/[id]", { id, userEmail });
-
-    const { error } = await supabaseAdmin
+    const { error } = await supabase
       .from("sessions")
       .delete()
       .eq("id", id)
