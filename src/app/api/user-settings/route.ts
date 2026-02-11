@@ -1,9 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { cookies } from "next/headers";
-import { supabaseAdmin } from "@/lib/supabaseServer";
+import { requireAuthedSupabase } from "@/lib/authServer";
 
 type UserSettings = {
-  id: string;
+  id: string | null;
   userEmail: string;
   fullName: string | null;
   phone: string | null;
@@ -15,27 +14,6 @@ type UserSettings = {
   timezone: string | null;
   darkMode: boolean;
 };
-
-// NOTE: cookies() is async in recent Next.js
-async function getUserEmail() {
-  const cookieStore = await cookies();
-
-  const all = cookieStore.getAll();
-  console.log("cookies seen in /api/user-settings:", all);
-
-  const candidate =
-    cookieStore.get("hd_user_email") ||
-    cookieStore.get("hd-user-email") ||
-    cookieStore.get("user_email") ||
-    cookieStore.get("userEmail") ||
-    cookieStore.get("email");
-
-  if (candidate?.value) {
-    return candidate.value;
-  }
-
-  return "dev-mediator@harmonydesk.local";
-}
 
 function mapRow(row: any): UserSettings {
   return {
@@ -57,11 +35,30 @@ function mapRow(row: any): UserSettings {
   };
 }
 
+function defaultSettings(userEmail: string): UserSettings {
+  return {
+    id: null,
+    userEmail,
+    fullName: null,
+    phone: null,
+    businessName: null,
+    businessAddress: null,
+    defaultHourlyRate: 200,
+    defaultCounty: "King County",
+    defaultSessionDuration: 1.0,
+    timezone: "America/Los_Angeles",
+    darkMode: false,
+  };
+}
+
 export async function GET(_req: NextRequest) {
   try {
-    const userEmail = await getUserEmail();
+    const auth = await requireAuthedSupabase();
+    if (!auth.ok) return auth.res;
 
-    const { data, error } = await supabaseAdmin
+    const { supabase, userEmail } = auth;
+
+    const { data, error } = await supabase
       .from("user_settings")
       .select("*")
       .eq("user_email", userEmail)
@@ -76,20 +73,7 @@ export async function GET(_req: NextRequest) {
     }
 
     if (!data) {
-      // no row yet -> return sensible defaults
-      return NextResponse.json({
-        id: null,
-        userEmail,
-        fullName: null,
-        phone: null,
-        businessName: null,
-        businessAddress: null,
-        defaultHourlyRate: 200,
-        defaultCounty: "King County",
-        defaultSessionDuration: 1.0,
-        timezone: "America/Los_Angeles",
-        darkMode: false,
-      });
+      return NextResponse.json(defaultSettings(userEmail));
     }
 
     return NextResponse.json(mapRow(data));
@@ -101,7 +85,10 @@ export async function GET(_req: NextRequest) {
 
 export async function PATCH(req: NextRequest) {
   try {
-    const userEmail = await getUserEmail();
+    const auth = await requireAuthedSupabase();
+    if (!auth.ok) return auth.res;
+
+    const { supabase, userEmail } = auth;
     const body = await req.json();
 
     const update: Record<string, any> = {};
@@ -113,21 +100,25 @@ export async function PATCH(req: NextRequest) {
       update.business_name = body.businessName || null;
     if ("businessAddress" in body)
       update.business_address = body.businessAddress || null;
+
     if ("defaultHourlyRate" in body) {
       const r = Number.parseFloat(body.defaultHourlyRate ?? "0");
       update.default_hourly_rate = Number.isNaN(r) ? null : r;
     }
+
     if ("defaultCounty" in body)
       update.default_county = body.defaultCounty || null;
+
     if ("defaultSessionDuration" in body) {
       const d = Number.parseFloat(body.defaultSessionDuration ?? "0");
       update.default_session_duration = Number.isNaN(d) ? null : d;
     }
+
     if ("timezone" in body) update.timezone = body.timezone || null;
     if ("darkMode" in body) update.dark_mode = !!body.darkMode;
 
-    // upsert: insert if missing, otherwise update
-    const { data, error } = await supabaseAdmin
+    // Upsert: insert if missing, otherwise update
+    const { data, error } = await supabase
       .from("user_settings")
       .upsert(
         {
