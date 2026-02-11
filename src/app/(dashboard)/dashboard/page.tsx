@@ -23,7 +23,7 @@ export default async function DashboardPage() {
   try {
     // Check response status before parsing
     if (!casesRes.ok || !sessionsRes.ok) {
-      throw new Error('Failed to fetch data from API');
+      throw new Error(`Failed to fetch data: cases=${casesRes.status}, sessions=${sessionsRes.status}`);
     }
 
     const cases: MediationCase[] = await casesRes.json();
@@ -31,11 +31,9 @@ export default async function DashboardPage() {
 
     // Count upcoming sessions (not completed and date >= now)
     const now = new Date();
-    upcomingSessions = sessions.filter((session) => {
-      if (session.completed) return false;
-      const sessionDate = new Date(session.date);
-      return sessionDate >= now;
-    }).length;
+    upcomingSessions = sessions.filter((session) => 
+      !session.completed && new Date(session.date) >= now
+    ).length;
 
     // Count new inquiries (cases with "Open" status)
     newInquiries = cases.filter((c) => c.status === "Open").length;
