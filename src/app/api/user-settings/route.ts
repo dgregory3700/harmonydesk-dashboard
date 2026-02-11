@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import { supabaseAdmin } from "@/lib/supabaseServer";
+import { createServerClient } from "@supabase/ssr";
 
 type UserSettings = {
   id: string;
@@ -16,25 +16,46 @@ type UserSettings = {
   darkMode: boolean;
 };
 
-// NOTE: cookies() is async in recent Next.js
-async function getUserEmail() {
+async function requireAuthedSupabase() {
   const cookieStore = await cookies();
 
-  const all = cookieStore.getAll();
-  console.log("cookies seen in /api/user-settings:", all);
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
-  const candidate =
-    cookieStore.get("hd_user_email") ||
-    cookieStore.get("hd-user-email") ||
-    cookieStore.get("user_email") ||
-    cookieStore.get("userEmail") ||
-    cookieStore.get("email");
-
-  if (candidate?.value) {
-    return candidate.value;
+  if (!supabaseUrl || !supabaseAnonKey) {
+    return {
+      ok: false as const,
+      res: NextResponse.json(
+        { error: "Server misconfigured: missing Supabase env" },
+        { status: 500 }
+      ),
+    };
   }
 
-  return "dev-mediator@harmonydesk.local";
+  const supabase = createServerClient(supabaseUrl, supabaseAnonKey, {
+    cookies: {
+      getAll() {
+        return cookieStore.getAll();
+      },
+      setAll(cookiesToSet) {
+        for (const { name, value, options } of cookiesToSet) {
+          cookieStore.set(name, value, options);
+        }
+      },
+    },
+  });
+
+  const { data, error } = await supabase.auth.getUser();
+  const user = data?.user;
+
+  if (error || !user?.email) {
+    return {
+      ok: false as const,
+      res: NextResponse.json({ error: "Unauthorized" }, { status: 401 }),
+    };
+  }
+
+  return { ok: true as const, supabase, userEmail: user.email };
 }
 
 function mapRow(row: any): UserSettings {
@@ -58,98 +79,98 @@ function mapRow(row: any): UserSettings {
 }
 
 export async function GET(_req: NextRequest) {
-  try {
-    const userEmail = await getUserEmail();
+  const auth = await requireAuthedSupabase();
+  if (!auth.ok) return auth.res;
 
-    const { data, error } = await supabaseAdmin
-      .from("user_settings")
-      .select("*")
-      .eq("user_email", userEmail)
-      .maybeSingle();
+  const { supabase, userEmail } = auth;
 
-    if (error) {
-      console.error("Supabase GET /api/user-settings error:", error);
-      return NextResponse.json(
-        { error: "Failed to load settings" },
-        { status: 500 }
-      );
-    }
+  const { data, error } = await supabase
+    .from("user_settings")
+    .select("*")
+    .eq("user_email", userEmail)
+    .maybeSingle();
 
-    if (!data) {
-      // no row yet -> return sensible defaults
-      return NextResponse.json({
-        id: null,
-        userEmail,
-        fullName: null,
-        phone: null,
-        businessName: null,
-        businessAddress: null,
-        defaultHourlyRate: 200,
-        defaultCounty: "King County",
-        defaultSessionDuration: 1.0,
-        timezone: "America/Los_Angeles",
-        darkMode: false,
-      });
-    }
-
-    return NextResponse.json(mapRow(data));
-  } catch (err) {
-    console.error("Unexpected GET /api/user-settings error:", err);
-    return NextResponse.json({ error: "Server error" }, { status: 500 });
+  if (error) {
+    console.error("Supabase GET /api/user-settings error:", error);
+    return NextResponse.json(
+      { error: "Failed to load settings" },
+      { status: 500 }
+    );
   }
+
+  if (!data) {
+    return NextResponse.json({
+      id: null,
+      userEmail,
+      fullName: null,
+      phone: null,
+      businessName: null,
+      businessAddress: null,
+      defaultHourlyRate: 200,
+      defaultCounty: "King County",
+      defaultSessionDuration: 1.0,
+      timezone: "America/Los_Angeles",
+      darkMode: false,
+    });
+  }
+
+  return NextResponse.json(mapRow(data));
 }
 
 export async function PATCH(req: NextRequest) {
+  const auth = await requireAuthedSupabase();
+  if (!auth.ok) return auth.res;
+
+  const { supabase, userEmail } = auth;
+
+  let body: any = {};
   try {
-    const userEmail = await getUserEmail();
-    const body = await req.json();
-
-    const update: Record<string, any> = {};
-
-    if ("fullName" in body)
-      update.full_name = body.fullName === "" ? null : body.fullName;
-    if ("phone" in body) update.phone = body.phone || null;
-    if ("businessName" in body)
-      update.business_name = body.businessName || null;
-    if ("businessAddress" in body)
-      update.business_address = body.businessAddress || null;
-    if ("defaultHourlyRate" in body) {
-      const r = Number.parseFloat(body.defaultHourlyRate ?? "0");
-      update.default_hourly_rate = Number.isNaN(r) ? null : r;
-    }
-    if ("defaultCounty" in body)
-      update.default_county = body.defaultCounty || null;
-    if ("defaultSessionDuration" in body) {
-      const d = Number.parseFloat(body.defaultSessionDuration ?? "0");
-      update.default_session_duration = Number.isNaN(d) ? null : d;
-    }
-    if ("timezone" in body) update.timezone = body.timezone || null;
-    if ("darkMode" in body) update.dark_mode = !!body.darkMode;
-
-    // upsert: insert if missing, otherwise update
-    const { data, error } = await supabaseAdmin
-      .from("user_settings")
-      .upsert(
-        {
-          user_email: userEmail,
-          ...update,
-        },
-        { onConflict: "user_email" }
-      )
-      .select("*")
-      .single();
-
-    if (error || !data) {
-      console.error("Supabase PATCH /api/user-settings error:", error);
-      return NextResponse.json(
-        { error: "Failed to save settings" },
-        { status: 500 }
-      );
-    }
-
-    return NextResponse.json(mapRow(data));
-  } catch (err) {
-    console.error("Unexpected PATCH /api/user-settings error:", err);
-    return NextResponse.json({ error: "Server error" }, { status: 500 });
+    body = await req.json();
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
+
+  const update: Record<string, any> = {};
+
+  if ("fullName" in body)
+    update.full_name = body.fullName === "" ? null : body.fullName;
+  if ("phone" in body) update.phone = body.phone || null;
+  if ("businessName" in body)
+    update.business_name = body.businessName || null;
+  if ("businessAddress" in body)
+    update.business_address = body.businessAddress || null;
+  if ("defaultHourlyRate" in body) {
+    const r = Number.parseFloat(body.defaultHourlyRate ?? "0");
+    update.default_hourly_rate = Number.isNaN(r) ? null : r;
+  }
+  if ("defaultCounty" in body)
+    update.default_county = body.defaultCounty || null;
+  if ("defaultSessionDuration" in body) {
+    const d = Number.parseFloat(body.defaultSessionDuration ?? "0");
+    update.default_session_duration = Number.isNaN(d) ? null : d;
+  }
+  if ("timezone" in body) update.timezone = body.timezone || null;
+  if ("darkMode" in body) update.dark_mode = !!body.darkMode;
+
+  const { data, error } = await supabase
+    .from("user_settings")
+    .upsert(
+      {
+        user_email: userEmail,
+        ...update,
+      },
+      { onConflict: "user_email" }
+    )
+    .select("*")
+    .single();
+
+  if (error || !data) {
+    console.error("Supabase PATCH /api/user-settings error:", error);
+    return NextResponse.json(
+      { error: "Failed to save settings" },
+      { status: 500 }
+    );
+  }
+
+  return NextResponse.json(mapRow(data));
 }

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import { supabaseAdmin } from "@/lib/supabaseServer";
+import { createServerClient } from "@supabase/ssr";
 
 type Message = {
   id: string;
@@ -11,27 +11,46 @@ type Message = {
   createdAt: string;
 };
 
-// NOTE: cookies() is async in recent Next.js
-async function getUserEmail() {
+async function requireAuthedSupabase() {
   const cookieStore = await cookies();
 
-  // Debug: log everything we see
-  const all = cookieStore.getAll();
-  console.log("cookies seen in /api/messages/[id]:", all);
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
-  const candidate =
-    cookieStore.get("hd_user_email") ||
-    cookieStore.get("hd-user-email") ||
-    cookieStore.get("user_email") ||
-    cookieStore.get("userEmail") ||
-    cookieStore.get("email");
-
-  if (candidate?.value) {
-    return candidate.value;
+  if (!supabaseUrl || !supabaseAnonKey) {
+    return {
+      ok: false as const,
+      res: NextResponse.json(
+        { error: "Server misconfigured: missing Supabase env" },
+        { status: 500 }
+      ),
+    };
   }
 
-  // fallback single dev mediator
-  return "dev-mediator@harmonydesk.local";
+  const supabase = createServerClient(supabaseUrl, supabaseAnonKey, {
+    cookies: {
+      getAll() {
+        return cookieStore.getAll();
+      },
+      setAll(cookiesToSet) {
+        for (const { name, value, options } of cookiesToSet) {
+          cookieStore.set(name, value, options);
+        }
+      },
+    },
+  });
+
+  const { data, error } = await supabase.auth.getUser();
+  const user = data?.user;
+
+  if (error || !user?.email) {
+    return {
+      ok: false as const,
+      res: NextResponse.json({ error: "Unauthorized" }, { status: 401 }),
+    };
+  }
+
+  return { ok: true as const, supabase, userEmail: user.email };
 }
 
 function mapRowToMessage(row: any): Message {
@@ -49,62 +68,54 @@ export async function GET(
   _req: NextRequest,
   context: { params: Promise<{ id: string }> }
 ) {
-  try {
-    const { id } = await context.params;
-    const userEmail = await getUserEmail();
+  const auth = await requireAuthedSupabase();
+  if (!auth.ok) return auth.res;
 
-    console.log("GET /api/messages/[id]", { id, userEmail });
+  const { supabase, userEmail } = auth;
+  const { id } = await context.params;
 
-    const { data, error } = await supabaseAdmin
-      .from("messages")
-      .select("*")
-      .eq("id", id)
-      .eq("user_email", userEmail)
-      .single();
+  const { data, error } = await supabase
+    .from("messages")
+    .select("*")
+    .eq("id", id)
+    .eq("user_email", userEmail)
+    .single();
 
-    if (error || !data) {
-      console.error("Supabase GET message error:", error);
-      return NextResponse.json(
-        { error: "Message not found" },
-        { status: 404 }
-      );
-    }
-
-    const message = mapRowToMessage(data);
-    return NextResponse.json(message);
-  } catch (err) {
-    console.error("Unexpected GET /api/messages/[id] error:", err);
-    return NextResponse.json({ error: "Server error" }, { status: 500 });
+  if (error || !data) {
+    console.error("Supabase GET message error:", error);
+    return NextResponse.json(
+      { error: "Message not found" },
+      { status: 404 }
+    );
   }
+
+  const message = mapRowToMessage(data);
+  return NextResponse.json(message);
 }
 
 export async function DELETE(
   _req: NextRequest,
   context: { params: Promise<{ id: string }> }
 ) {
-  try {
-    const { id } = await context.params;
-    const userEmail = await getUserEmail();
+  const auth = await requireAuthedSupabase();
+  if (!auth.ok) return auth.res;
 
-    console.log("DELETE /api/messages/[id]", { id, userEmail });
+  const { supabase, userEmail } = auth;
+  const { id } = await context.params;
 
-    const { error } = await supabaseAdmin
-      .from("messages")
-      .delete()
-      .eq("id", id)
-      .eq("user_email", userEmail);
+  const { error } = await supabase
+    .from("messages")
+    .delete()
+    .eq("id", id)
+    .eq("user_email", userEmail);
 
-    if (error) {
-      console.error("Supabase DELETE message error:", error);
-      return NextResponse.json(
-        { error: "Failed to delete message" },
-        { status: 500 }
-      );
-    }
-
-    return NextResponse.json({ success: true }, { status: 200 });
-  } catch (err) {
-    console.error("Unexpected DELETE /api/messages/[id] error:", err);
-    return NextResponse.json({ error: "Server error" }, { status: 500 });
+  if (error) {
+    console.error("Supabase DELETE message error:", error);
+    return NextResponse.json(
+      { error: "Failed to delete message" },
+      { status: 500 }
+    );
   }
+
+  return NextResponse.json({ success: true }, { status: 200 });
 }

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import { supabaseAdmin } from "@/lib/supabaseServer";
+import { createServerClient } from "@supabase/ssr";
 
 type MediationSession = {
   id: string;
@@ -12,27 +12,46 @@ type MediationSession = {
   completed: boolean;
 };
 
-// NOTE: cookies() is async in recent Next.js
-async function getUserEmail() {
+async function requireAuthedSupabase() {
   const cookieStore = await cookies();
 
-  // Debug: log everything we see
-  const all = cookieStore.getAll();
-  console.log("cookies seen in /api/sessions/[id]:", all);
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
-  const candidate =
-    cookieStore.get("hd_user_email") ||
-    cookieStore.get("hd-user-email") ||
-    cookieStore.get("user_email") ||
-    cookieStore.get("userEmail") ||
-    cookieStore.get("email");
-
-  if (candidate?.value) {
-    return candidate.value;
+  if (!supabaseUrl || !supabaseAnonKey) {
+    return {
+      ok: false as const,
+      res: NextResponse.json(
+        { error: "Server misconfigured: missing Supabase env" },
+        { status: 500 }
+      ),
+    };
   }
 
-  // fallback single dev mediator
-  return "dev-mediator@harmonydesk.local";
+  const supabase = createServerClient(supabaseUrl, supabaseAnonKey, {
+    cookies: {
+      getAll() {
+        return cookieStore.getAll();
+      },
+      setAll(cookiesToSet) {
+        for (const { name, value, options } of cookiesToSet) {
+          cookieStore.set(name, value, options);
+        }
+      },
+    },
+  });
+
+  const { data, error } = await supabase.auth.getUser();
+  const user = data?.user;
+
+  if (error || !user?.email) {
+    return {
+      ok: false as const,
+      res: NextResponse.json({ error: "Unauthorized" }, { status: 401 }),
+    };
+  }
+
+  return { ok: true as const, supabase, userEmail: user.email };
 }
 
 function mapRowToSession(row: any): MediationSession {
@@ -51,125 +70,119 @@ export async function GET(
   _req: NextRequest,
   context: { params: Promise<{ id: string }> }
 ) {
-  try {
-    const { id } = await context.params;
-    const userEmail = await getUserEmail();
+  const auth = await requireAuthedSupabase();
+  if (!auth.ok) return auth.res;
 
-    console.log("GET /api/sessions/[id]", { id, userEmail });
+  const { supabase, userEmail } = auth;
+  const { id } = await context.params;
 
-    const { data, error } = await supabaseAdmin
-      .from("sessions")
-      .select("*")
-      .eq("id", id)
-      .eq("user_email", userEmail)
-      .single();
+  const { data, error } = await supabase
+    .from("sessions")
+    .select("*")
+    .eq("id", id)
+    .eq("user_email", userEmail)
+    .single();
 
-    if (error || !data) {
-      console.error("Supabase GET session error:", error);
-      return NextResponse.json(
-        { error: "Session not found" },
-        { status: 404 }
-      );
-    }
-
-    const session = mapRowToSession(data);
-    return NextResponse.json(session);
-  } catch (err) {
-    console.error("Unexpected GET /api/sessions/[id] error:", err);
-    return NextResponse.json({ error: "Server error" }, { status: 500 });
+  if (error || !data) {
+    console.error("Supabase GET session error:", error);
+    return NextResponse.json(
+      { error: "Session not found" },
+      { status: 404 }
+    );
   }
+
+  const session = mapRowToSession(data);
+  return NextResponse.json(session);
 }
 
 export async function PATCH(
   req: NextRequest,
   context: { params: Promise<{ id: string }> }
 ) {
+  const auth = await requireAuthedSupabase();
+  if (!auth.ok) return auth.res;
+
+  const { supabase, userEmail } = auth;
+  const { id } = await context.params;
+
+  let body: any = {};
   try {
-    const { id } = await context.params;
-    const userEmail = await getUserEmail();
-    const body = await req.json();
-
-    const update: Record<string, any> = {};
-
-    if (body.date !== undefined) {
-      update.date = String(body.date).trim();
-    }
-
-    if (body.durationHours !== undefined || body.duration_hours !== undefined) {
-      const raw = body.durationHours ?? body.duration_hours;
-      const parsed = Number.parseFloat(String(raw));
-      update.duration_hours = Number.isNaN(parsed) ? 1 : parsed;
-    }
-
-    if (body.notes !== undefined) {
-      const val = String(body.notes).trim();
-      update.notes = val || null;
-    }
-
-    if (body.completed !== undefined) {
-      update.completed = Boolean(body.completed);
-    }
-
-    if (Object.keys(update).length === 0) {
-      return NextResponse.json(
-        { error: "Nothing to update" },
-        { status: 400 }
-      );
-    }
-
-    console.log("PATCH /api/sessions/[id]", { id, userEmail, update });
-
-    const { data, error } = await supabaseAdmin
-      .from("sessions")
-      .update(update)
-      .eq("id", id)
-      .eq("user_email", userEmail)
-      .select("*")
-      .single();
-
-    if (error || !data) {
-      console.error("Supabase PATCH session error:", error);
-      return NextResponse.json(
-        { error: "Failed to update session" },
-        { status: 500 }
-      );
-    }
-
-    const session = mapRowToSession(data);
-    return NextResponse.json(session);
-  } catch (err) {
-    console.error("Unexpected PATCH /api/sessions/[id] error:", err);
-    return NextResponse.json({ error: "Server error" }, { status: 500 });
+    body = await req.json();
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
+
+  const update: Record<string, any> = {};
+
+  if (body.date !== undefined) {
+    update.date = String(body.date).trim();
+  }
+
+  if (body.durationHours !== undefined || body.duration_hours !== undefined) {
+    const raw = body.durationHours ?? body.duration_hours;
+    const parsed = Number.parseFloat(String(raw));
+    update.duration_hours = Number.isNaN(parsed) ? 1 : parsed;
+  }
+
+  if (body.notes !== undefined) {
+    const val = String(body.notes).trim();
+    update.notes = val || null;
+  }
+
+  if (body.completed !== undefined) {
+    update.completed = Boolean(body.completed);
+  }
+
+  if (Object.keys(update).length === 0) {
+    return NextResponse.json(
+      { error: "Nothing to update" },
+      { status: 400 }
+    );
+  }
+
+  const { data, error } = await supabase
+    .from("sessions")
+    .update(update)
+    .eq("id", id)
+    .eq("user_email", userEmail)
+    .select("*")
+    .single();
+
+  if (error || !data) {
+    console.error("Supabase PATCH session error:", error);
+    return NextResponse.json(
+      { error: "Failed to update session" },
+      { status: 500 }
+    );
+  }
+
+  const session = mapRowToSession(data);
+  return NextResponse.json(session);
 }
 
 export async function DELETE(
   _req: NextRequest,
   context: { params: Promise<{ id: string }> }
 ) {
-  try {
-    const { id } = await context.params;
-    const userEmail = await getUserEmail();
+  const auth = await requireAuthedSupabase();
+  if (!auth.ok) return auth.res;
 
-    console.log("DELETE /api/sessions/[id]", { id, userEmail });
+  const { supabase, userEmail } = auth;
+  const { id } = await context.params;
 
-    const { error } = await supabaseAdmin
-      .from("sessions")
-      .delete()
-      .eq("id", id)
-      .eq("user_email", userEmail);
+  const { error } = await supabase
+    .from("sessions")
+    .delete()
+    .eq("id", id)
+    .eq("user_email", userEmail);
 
-    if (error) {
-      console.error("Supabase DELETE session error:", error);
-      return NextResponse.json(
-        { error: "Failed to delete session" },
-        { status: 500 }
-      );
-    }
-
-    return NextResponse.json({ success: true }, { status: 200 });
-  } catch (err) {
-    console.error("Unexpected DELETE /api/sessions/[id] error:", err);
-    return NextResponse.json({ error: "Server error" }, { status: 500 });
+  if (error) {
+    console.error("Supabase DELETE session error:", error);
+    return NextResponse.json(
+      { error: "Failed to delete session" },
+      { status: 500 }
+    );
   }
+
+  return NextResponse.json({ success: true }, { status: 200 });
 }
