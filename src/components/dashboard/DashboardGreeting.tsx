@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { auth } from "@/lib/auth";
+import { supabaseBrowser } from "@/lib/supabase/client";
 
 export function DashboardGreeting() {
   const [email, setEmail] = useState<string | null>(null);
@@ -11,10 +11,9 @@ export function DashboardGreeting() {
 
     async function run() {
       try {
-        // If your auth helper is async now, await it.
-        const stored = await auth.getUserEmail();
+        const { data } = await supabaseBrowser.auth.getUser();
         if (!mounted) return;
-        setEmail(stored ?? null);
+        setEmail(data.user?.email ?? null);
       } catch {
         if (!mounted) return;
         setEmail(null);
@@ -33,8 +32,7 @@ export function DashboardGreeting() {
   return (
     <div className="mb-6">
       <h1 className="text-2xl font-semibold tracking-tight text-slate-100">
-        Welcome back,{" "}
-        <span className="text-sky-400">{nameOrEmail}</span>
+        Welcome back, <span className="text-sky-400">{nameOrEmail}</span>
       </h1>
       <p className="mt-1 text-sm text-slate-400">
         Here&apos;s a quick snapshot of your HarmonyDesk activity.
