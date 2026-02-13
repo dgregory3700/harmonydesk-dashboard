@@ -83,13 +83,29 @@ export async function POST(
       },
     };
 
-    // POST to external email API
+    // POST to external email API with timeout
     const emailEndpoint = `${emailApiUrl}/invoice/send`;
-    const res = await fetch(emailEndpoint, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
+
+    let res;
+    try {
+      res = await fetch(emailEndpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+        signal: controller.signal,
+      });
+    } catch (fetchErr: any) {
+      clearTimeout(timeoutId);
+      console.error("Fetch to email API failed:", fetchErr);
+      return NextResponse.json(
+        { error: fetchErr.name === "AbortError" ? "Email service request timed out" : "Failed to send invoice email" },
+        { status: 502 }
+      );
+    } finally {
+      clearTimeout(timeoutId);
+    }
 
     if (!res.ok) {
       const text = await res.text().catch(() => "");
