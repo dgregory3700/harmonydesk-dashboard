@@ -217,7 +217,7 @@ export default function BillingOverview() {
       );
     } catch (err: any) {
       console.error(err);
-      alert(err.message || "Could not send invoice. Status remains as Draft.");
+      alert(err.message || "Could not send invoice. Please refresh to see the current status.");
     }
   }
 
