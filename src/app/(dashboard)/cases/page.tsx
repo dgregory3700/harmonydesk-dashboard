@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 
 type CaseStatus = "Open" | "Upcoming" | "Closed";
 
@@ -17,11 +18,13 @@ type MediationCase = {
 };
 
 export default function CasesPage() {
+  const router = useRouter();
   const [cases, setCases] = useState<MediationCase[]>([]);
   const [statusFilter, setStatusFilter] = useState<CaseStatus | "All">("All");
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [invoiceCreateError, setInvoiceCreateError] = useState<string | null>(null);
 
   useEffect(() => {
     async function loadCases() {
@@ -71,6 +74,36 @@ export default function CasesPage() {
   const openCount = cases.filter((c) => c.status === "Open").length;
   const upcomingCount = cases.filter((c) => c.status === "Upcoming").length;
   const closedCount = cases.filter((c) => c.status === "Closed").length;
+
+  async function handleCreateInvoice(c: MediationCase) {
+    try {
+      setInvoiceCreateError(null);
+      
+      const res = await fetch("/api/invoices", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          caseNumber: c.caseNumber,
+          matter: c.matter,
+          contact: c.parties,
+          hours: 0,
+          rate: 0,
+        }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || "Failed to create invoice");
+      }
+
+      router.push("/billing");
+    } catch (err: any) {
+      console.error("Error creating invoice:", err);
+      setInvoiceCreateError(err?.message ?? "Failed to create invoice");
+    }
+  }
 
   function formatDate(value?: string | null) {
     if (!value) return "—";
@@ -178,6 +211,12 @@ export default function CasesPage() {
       <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-4 shadow-sm">
         <h2 className="mb-3 text-sm font-medium text-slate-300">Case list</h2>
 
+        {invoiceCreateError && (
+          <div className="mb-3 rounded-md border border-red-500/20 bg-red-500/10 p-3 text-sm text-red-400">
+            {invoiceCreateError}
+          </div>
+        )}
+
         {loading ? (
           <p className="text-sm text-slate-500">Loading cases…</p>
         ) : error ? (
@@ -240,11 +279,7 @@ export default function CasesPage() {
                     <button
                       type="button"
                       className="rounded-md border border-slate-700 bg-transparent px-3 py-1 text-xs font-medium text-slate-400 hover:bg-slate-800 hover:text-slate-200 transition-colors"
-                      onClick={() =>
-                        alert(
-                          "In production this will create an invoice from this case."
-                        )
-                      }
+                      onClick={() => handleCreateInvoice(c)}
                     >
                       Create invoice
                     </button>
