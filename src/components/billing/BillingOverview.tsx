@@ -201,7 +201,24 @@ export default function BillingOverview() {
 
     if (!ok) return;
 
-    await handleStatusChange(inv.id, "Sent");
+    try {
+      const res = await fetch(`/api/invoices/${inv.id}/send`, {
+        method: "POST",
+      });
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || "Failed to send invoice");
+      }
+
+      const updated = (await res.json()) as Invoice;
+      setInvoices((prev) =>
+        prev.map((invoice) => (invoice.id === inv.id ? updated : invoice))
+      );
+    } catch (err: any) {
+      console.error(err);
+      alert(err.message || "Could not send invoice. Please refresh to see the current status.");
+    }
   }
 
   // Simple preview for Sent / county-report invoices
