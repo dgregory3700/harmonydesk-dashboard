@@ -215,13 +215,16 @@ const res = await fetch(`/api/invoices/${inv.id}/send`, {
 
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        throw new Error(data.error || "Failed to send invoice");
+        throw new Error(data.error || data.message || "Failed to send invoice");
       }
 
-      const updated = (await res.json()) as Invoice;
-      setInvoices((prev) =>
-        prev.map((invoice) => (invoice.id === inv.id ? updated : invoice))
-      );
+      const json = await res.json();
+const updatedInvoice = (json?.invoice ?? json) as Invoice;
+
+setInvoices((prev) =>
+  prev.map((invoice) => (invoice.id === inv.id ? updatedInvoice : invoice))
+);
+
     } catch (err: any) {
       console.error(err);
       alert(err.message || "Could not send invoice. Please refresh to see the current status.");
