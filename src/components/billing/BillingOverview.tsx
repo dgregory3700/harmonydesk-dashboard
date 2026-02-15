@@ -530,7 +530,6 @@ setInvoices((prev) =>
                       }
                     >
                       <option value="Draft">Draft</option>
-                      <option value="Sent">Sent</option>
                       <option value="For county report">
                         For county report
                       </option>
