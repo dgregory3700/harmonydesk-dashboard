@@ -146,7 +146,9 @@ export default function BillingOverview() {
         throw new Error(data.error || "Failed to update invoice");
       }
 
-      const updated = (await res.json()) as Invoice;
+      const json = await res.json();
+      const updated = (json?.invoice ?? json) as Invoice;
+
       setInvoices((prev) =>
         prev.map((inv) => (inv.id === id ? updated : inv))
       );
