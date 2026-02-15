@@ -202,9 +202,14 @@ export default function BillingOverview() {
     if (!ok) return;
 
     try {
-      const res = await fetch(`/api/invoices/${inv.id}/send`, {
-        method: "POST",
-      });
+      const toEmail = window.prompt("Send invoice to which email address?", "");
+if (!toEmail || !toEmail.trim()) return;
+
+const res = await fetch(`/api/invoices/${inv.id}/send`, {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({ toEmail: toEmail.trim() }),
+});
 
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
