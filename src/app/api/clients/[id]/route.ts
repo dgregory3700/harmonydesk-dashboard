@@ -23,10 +23,7 @@ function mapRowToClient(row: any): Client {
   };
 }
 
-export async function GET(
-  _req: NextRequest,
-  context: IdContext
-) {
+export async function GET(_req: NextRequest, context: IdContext) {
   try {
     const auth = await requireAuthedSupabase();
     if (!auth.ok) return auth.res;
@@ -52,10 +49,7 @@ export async function GET(
   }
 }
 
-export async function PATCH(
-  req: NextRequest,
-  context: IdContext
-) {
+export async function PATCH(req: NextRequest, context: IdContext) {
   try {
     const auth = await requireAuthedSupabase();
     if (!auth.ok) return auth.res;
@@ -96,6 +90,7 @@ export async function PATCH(
       return NextResponse.json({ error: "Nothing to update" }, { status: 400 });
     }
 
+    // IMPORTANT: .single() will error if 0 rows match. We treat that as 404, not 500.
     const { data, error } = await supabase
       .from("clients")
       .update(update)
@@ -104,7 +99,11 @@ export async function PATCH(
       .select("*")
       .single();
 
-    if (error || !data) {
+    if (!data) {
+      return NextResponse.json({ error: "Client not found" }, { status: 404 });
+    }
+
+    if (error) {
       console.error("Supabase PATCH client error:", error);
       return NextResponse.json(
         { error: "Failed to update client" },
@@ -113,16 +112,15 @@ export async function PATCH(
     }
 
     return NextResponse.json(mapRowToClient(data));
-  } catch (err) {
+  } catch (err: any) {
+    // If Supabase throws due to 0 rows on single(), we still want a 404.
+    // Keep this deterministic: fall back to generic server error only if we truly can't classify.
     console.error("Unexpected PATCH /api/clients/[id] error:", err);
     return NextResponse.json({ error: "Server error" }, { status: 500 });
   }
 }
 
-export async function DELETE(
-  _req: NextRequest,
-  context: IdContext
-) {
+export async function DELETE(_req: NextRequest, context: IdContext) {
   try {
     const auth = await requireAuthedSupabase();
     if (!auth.ok) return auth.res;
@@ -130,11 +128,13 @@ export async function DELETE(
     const { supabase, userEmail } = auth;
     const { id } = await context.params;
 
-    const { error } = await supabase
+    // IMPORTANT: select a field so we can prove whether a row was deleted.
+    const { data, error } = await supabase
       .from("clients")
       .delete()
       .eq("id", id)
-      .eq("user_email", userEmail);
+      .eq("user_email", userEmail)
+      .select("id");
 
     if (error) {
       console.error("Supabase DELETE client error:", error);
@@ -142,6 +142,10 @@ export async function DELETE(
         { error: "Failed to delete client" },
         { status: 500 }
       );
+    }
+
+    if (!data || data.length === 0) {
+      return NextResponse.json({ error: "Client not found" }, { status: 404 });
     }
 
     return NextResponse.json({ success: true }, { status: 200 });
