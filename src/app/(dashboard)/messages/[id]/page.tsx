@@ -26,7 +26,6 @@ type Message = {
   body: string;
   createdAt: string;
 
-  // email fields (now returned by API)
   direction?: MessageDirection;
   to_emails?: string | null;
   from_email?: string | null;
@@ -54,6 +53,39 @@ function isValidEmail(value: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed);
 }
 
+function StatusPill(props: { message: Message }) {
+  const status = props.message.email_status ?? null;
+
+  const base =
+    "inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-semibold";
+  if (status === "sent") {
+    return (
+      <span className={`${base} border-emerald-700 bg-emerald-900/30 text-emerald-200`}>
+        ✅ Sent
+      </span>
+    );
+  }
+  if (status === "failed") {
+    return (
+      <span className={`${base} border-red-700 bg-red-900/30 text-red-200`}>
+        ❌ Failed
+      </span>
+    );
+  }
+  if (status === "pending") {
+    return (
+      <span className={`${base} border-amber-700 bg-amber-900/30 text-amber-200`}>
+        ⏳ Pending
+      </span>
+    );
+  }
+  return (
+    <span className={`${base} border-slate-700 bg-slate-900/40 text-slate-200`}>
+      Internal
+    </span>
+  );
+}
+
 export default function MessageDetailPage() {
   const params = useParams();
   const router = useRouter();
@@ -70,7 +102,7 @@ export default function MessageDetailPage() {
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
-  // Send-as-email controls (for existing messages)
+  // Send-as-email controls
   const [showEmailSend, setShowEmailSend] = useState(false);
   const [toEmails, setToEmails] = useState("");
   const [sendingEmail, setSendingEmail] = useState(false);
@@ -108,14 +140,14 @@ export default function MessageDetailPage() {
       const data = (await res.json()) as Message;
       setMessage(data);
 
-      // Load linked case (if any)
       if (data.caseId) {
         setLoadingCase(true);
         setCaseError(null);
 
         const caseRes = await fetch(`/api/cases/${data.caseId}`);
         if (!caseRes.ok) {
-          if (caseRes.status === 404) throw new Error("Case not found for this message");
+          if (caseRes.status === 404)
+            throw new Error("Case not found for this message");
           throw new Error("Failed to load case for this message");
         }
 
@@ -190,8 +222,7 @@ export default function MessageDetailPage() {
 
       if (!res.ok) {
         setSendError(json?.error || "Failed to send email");
-        // Even on failure, message may be updated (failed/pending). Refresh to reflect truth.
-        await fetchMessageAndCase();
+        await fetchMessageAndCase(); // reflect truthful status
         setSendingEmail(false);
         return;
       }
@@ -238,15 +269,6 @@ export default function MessageDetailPage() {
     );
   }
 
-  const statusLabel =
-    message.email_status === "sent"
-      ? `Sent ${formatDate(message.sent_at)}`
-      : message.email_status === "failed"
-      ? "Failed to send"
-      : message.email_status === "pending"
-      ? "Pending send"
-      : "Internal only";
-
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-1">
@@ -256,15 +278,37 @@ export default function MessageDetailPage() {
         >
           ← Back to messages
         </Link>
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <div>
-            <h1 className="text-2xl font-semibold tracking-tight text-slate-100">
-              {message.subject}
-            </h1>
+
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="space-y-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <h1 className="text-2xl font-semibold tracking-tight text-slate-100">
+                {message.subject}
+              </h1>
+              <StatusPill message={message} />
+            </div>
+
             <p className="text-sm text-slate-400">
               Created {formatDate(message.createdAt)}
             </p>
-            <p className="mt-1 text-xs text-slate-500">Email status: {statusLabel}</p>
+
+            {message.email_status === "sent" && (
+              <p className="text-sm font-semibold text-emerald-300">
+                Sent {formatDate(message.sent_at)}
+              </p>
+            )}
+
+            {message.email_status === "failed" && (
+              <p className="text-sm font-semibold text-red-300">
+                Failed to send
+              </p>
+            )}
+
+            {message.email_status === "pending" && (
+              <p className="text-sm font-semibold text-amber-300">
+                Pending send
+              </p>
+            )}
           </div>
         </div>
       </div>
@@ -315,7 +359,6 @@ export default function MessageDetailPage() {
         </div>
 
         <div className="space-y-4">
-          {/* Send as email */}
           <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-4 shadow-sm space-y-3">
             <div className="flex items-center justify-between">
               <p className="text-xs font-medium text-slate-300">Send as email</p>
@@ -348,8 +391,7 @@ export default function MessageDetailPage() {
                     className="w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-slate-200 placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
                   />
                   <p className="text-[10px] text-slate-500">
-                    Deterministic rule: we only show success when Resend confirms
-                    success.
+                    Success only displays when Resend confirms success.
                   </p>
                 </div>
 
@@ -362,9 +404,15 @@ export default function MessageDetailPage() {
                   {sendingEmail ? "Sending…" : "Send email"}
                 </button>
 
-                {sendError && <p className="text-xs text-red-400">{sendError}</p>}
+                {sendError && (
+                  <p className="text-xs font-medium text-red-300">{sendError}</p>
+                )}
                 {sendSuccess && (
-                  <p className="text-xs text-emerald-400">{sendSuccess}</p>
+                  <div className="rounded-md border border-emerald-700 bg-emerald-900/30 px-3 py-2">
+                    <p className="text-sm font-semibold text-emerald-200">
+                      ✅ {sendSuccess}
+                    </p>
+                  </div>
                 )}
               </div>
             ) : (
@@ -374,7 +422,6 @@ export default function MessageDetailPage() {
             )}
           </div>
 
-          {/* Delete */}
           <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-4 shadow-sm space-y-3">
             <button
               type="button"
@@ -385,7 +432,9 @@ export default function MessageDetailPage() {
               {deleting ? "Deleting…" : "Delete message"}
             </button>
 
-            {deleteError && <p className="text-xs text-red-400">{deleteError}</p>}
+            {deleteError && (
+              <p className="text-xs text-red-400">{deleteError}</p>
+            )}
           </div>
 
           <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-4 text-xs text-slate-500 shadow-sm">
