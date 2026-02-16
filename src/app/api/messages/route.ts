@@ -1,3 +1,5 @@
+// src/app/api/messages/route.ts
+
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuthedSupabase } from "@/lib/authServer";
 
@@ -221,7 +223,8 @@ export async function POST(req: NextRequest) {
       });
 
       if (!sendRes.ok) {
-        const { data: updated } = await supabase
+        // Persist truthful failure state (best-effort).
+        const { data: updated, error: updateFailErr } = await supabase
           .from("messages")
           .update({
             email_status: "failed",
@@ -230,10 +233,18 @@ export async function POST(req: NextRequest) {
           .eq("id", message.id)
           .eq("user_email", userEmail)
           .select("*")
-          .single()
-          .catch(() => ({ data: null as any }));
+          .single();
 
-        if (updated) message = mapRowToMessage(updated);
+        if (updateFailErr) {
+          console.error(
+            "Supabase update (mark email failed) error:",
+            updateFailErr
+          );
+        }
+
+        if (updated) {
+          message = mapRowToMessage(updated);
+        }
 
         return NextResponse.json(
           { error: sendRes.error, message },
