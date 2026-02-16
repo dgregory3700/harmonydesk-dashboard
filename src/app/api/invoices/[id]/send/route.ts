@@ -2,6 +2,9 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuthedSupabase } from "@/lib/authServer";
+import { resolve4, resolve6, resolveMx } from "dns/promises";
+
+export const runtime = "nodejs"; // required for dns/promises on Vercel
 
 type IdContext = { params: Promise<{ id: string }> };
 
@@ -96,11 +99,38 @@ function buildInvoiceEmail(row: InvoiceRow) {
   return { subject, text, html };
 }
 
-// Minimal email validation; server is source of truth (deterministic negative tests)
-function isValidEmail(value: string): boolean {
+// Syntax-only email validation
+function isValidEmailSyntax(value: string): boolean {
   const v = value.trim();
   if (!v) return false;
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v);
+  // basic: local@domain.tld (no spaces)
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)) return false;
+  // disallow consecutive dots in domain
+  const domain = v.split("@")[1] || "";
+  if (domain.includes("..")) return false;
+  return true;
+}
+
+// Deliverability-ish validation: domain must resolve (MX preferred, A/AAAA fallback)
+async function domainLooksRoutable(email: string): Promise<boolean> {
+  const domain = email.split("@")[1]?.toLowerCase().trim();
+  if (!domain) return false;
+
+  try {
+    const mx = await resolveMx(domain).catch(() => []);
+    if (mx && mx.length > 0) return true;
+
+    // Some domains may accept mail with A/AAAA fallback. Check those too.
+    const a4 = await resolve4(domain).catch(() => []);
+    if (a4 && a4.length > 0) return true;
+
+    const a6 = await resolve6(domain).catch(() => []);
+    if (a6 && a6.length > 0) return true;
+
+    return false;
+  } catch {
+    return false;
+  }
 }
 
 async function sendViaResend(args: {
@@ -108,7 +138,7 @@ async function sendViaResend(args: {
   subject: string;
   html: string;
   text: string;
-  replyTo: string; // mediator email (Reply-To)
+  replyTo: string;
 }) {
   const apiKey = process.env.RESEND_API_KEY;
   const from = process.env.HD_EMAIL_FROM;
@@ -148,7 +178,7 @@ async function sendViaResend(args: {
     }
 
     const messageId = json?.id ? String(json.id) : undefined;
-    return { ok: true as const, messageId, raw: json };
+    return { ok: true as const, messageId, raw: json, from };
   } catch (err: any) {
     const msg =
       err?.name === "AbortError"
@@ -181,10 +211,19 @@ export async function POST(req: NextRequest, context: IdContext) {
       );
     }
 
-    // ✅ Deterministic failure for bad input
-    if (!isValidEmail(toEmail)) {
+    if (!isValidEmailSyntax(toEmail)) {
       return NextResponse.json(
         { error: "Invalid recipient email address" },
+        { status: 400 }
+      );
+    }
+
+    // ✅ Deterministic negative test for fake domains:
+    // Reject domains that do not resolve (MX or A/AAAA).
+    const routable = await domainLooksRoutable(toEmail);
+    if (!routable) {
+      return NextResponse.json(
+        { error: "Recipient email domain does not appear to accept mail" },
         { status: 400 }
       );
     }
@@ -216,7 +255,7 @@ export async function POST(req: NextRequest, context: IdContext) {
       );
     }
 
-    // 3) Build + send via provider-direct Resend (Reply-To = mediator email)
+    // 3) Build + send via Resend (Reply-To = mediator)
     const { subject, text, html } = buildInvoiceEmail(row);
     const send = await sendViaResend({
       to: toEmail,
@@ -234,7 +273,6 @@ export async function POST(req: NextRequest, context: IdContext) {
         details: (send as any).details,
       });
 
-      // IMPORTANT: do NOT mutate invoice on failure
       return NextResponse.json(
         {
           error: "EMAIL_SEND_FAILED",
@@ -245,15 +283,7 @@ export async function POST(req: NextRequest, context: IdContext) {
       );
     }
 
-    console.log("Invoice email sent:", {
-      invoice_id: id,
-      provider: "resend",
-      messageId: send.messageId,
-      to: toEmail,
-      replyTo: userEmail,
-    });
-
-    // 4) Only after successful send: update status to Sent
+    // 4) After successful provider send: update status to Sent
     const { data: updatedRow, error: updateError } = await supabase
       .from("invoices")
       .update({ status: "Sent" })
@@ -281,6 +311,7 @@ export async function POST(req: NextRequest, context: IdContext) {
         messageId: send.messageId,
         to: toEmail,
         replyTo: userEmail,
+        from: send.from,
       },
     });
   } catch (err) {
