@@ -101,6 +101,7 @@ async function sendViaResend(args: {
   subject: string;
   html: string;
   text: string;
+  replyTo: string; // mediator email (Reply-To)
 }) {
   const apiKey = process.env.RESEND_API_KEY;
   const from = process.env.HD_EMAIL_FROM;
@@ -125,6 +126,7 @@ async function sendViaResend(args: {
         subject: args.subject,
         html: args.html,
         text: args.text,
+        reply_to: args.replyTo, // ✅ Option 1: replies go to mediator inbox
       }),
       signal: controller.signal,
     });
@@ -199,9 +201,15 @@ export async function POST(req: NextRequest, context: IdContext) {
       );
     }
 
-    // 3) Build + send via provider-direct Resend
+    // 3) Build + send via provider-direct Resend (Reply-To = mediator email)
     const { subject, text, html } = buildInvoiceEmail(row);
-    const send = await sendViaResend({ to: toEmail, subject, text, html });
+    const send = await sendViaResend({
+      to: toEmail,
+      subject,
+      text,
+      html,
+      replyTo: userEmail,
+    });
 
     if (!send.ok) {
       console.error("Invoice email send failed:", {
@@ -227,6 +235,7 @@ export async function POST(req: NextRequest, context: IdContext) {
       provider: "resend",
       messageId: send.messageId,
       to: toEmail,
+      replyTo: userEmail,
     });
 
     // 4) Only after successful send: update status to Sent
@@ -252,7 +261,12 @@ export async function POST(req: NextRequest, context: IdContext) {
 
     return NextResponse.json({
       invoice: mapRowToInvoice(updatedRow),
-      email: { provider: "resend", messageId: send.messageId, to: toEmail },
+      email: {
+        provider: "resend",
+        messageId: send.messageId,
+        to: toEmail,
+        replyTo: userEmail,
+      },
     });
   } catch (err) {
     console.error("Unexpected POST /api/invoices/[id]/send error:", err);
