@@ -36,7 +36,6 @@ function mapRowToMessage(row: any): Message {
   };
 }
 
-// Minimal email validation; server is the source of truth.
 function isValidEmail(value: string): boolean {
   const v = value.trim();
   if (!v) return false;
@@ -51,12 +50,8 @@ async function sendViaResend(args: {
   const apiKey = process.env.RESEND_API_KEY;
   const from = process.env.HD_EMAIL_FROM;
 
-  if (!apiKey) {
-    return { ok: false as const, error: "Missing RESEND_API_KEY" };
-  }
-  if (!from) {
-    return { ok: false as const, error: "Missing HD_EMAIL_FROM" };
-  }
+  if (!apiKey) return { ok: false as const, error: "Missing RESEND_API_KEY" };
+  if (!from) return { ok: false as const, error: "Missing HD_EMAIL_FROM" };
 
   const res = await fetch("https://api.resend.com/emails", {
     method: "POST",
@@ -68,7 +63,6 @@ async function sendViaResend(args: {
       from,
       to: args.to,
       subject: args.subject,
-      // Keep it simple/deterministic: plain text only for now.
       text: args.bodyText,
     }),
   });
@@ -81,7 +75,7 @@ async function sendViaResend(args: {
     };
   }
 
-  const json = (await res.json().catch(() => ({}))) as any;
+  const json = (await res.json().catch(() => ({}))) as unknown;
   return { ok: true as const, email: json, from };
 }
 
@@ -137,7 +131,7 @@ export async function POST(req: NextRequest) {
 
     const { supabase, userEmail } = auth;
 
-    const body = await req.json();
+    const body: any = await req.json();
 
     const subject = String(body.subject ?? "").trim();
     const messageBody = String(body.body ?? "").trim();
@@ -155,18 +149,19 @@ export async function POST(req: NextRequest) {
 
     const sendAsEmail = !!body.sendAsEmail;
 
-    // Accept toEmails as array, or comma-separated string as fallback.
+    // Accept toEmails as array, or comma/space-separated string.
     let toEmailsArray: string[] = [];
+
     if (Array.isArray(body.toEmails)) {
-      toEmailsArray = body.toEmails.map((v: any) => String(v || "").trim());
+      toEmailsArray = body.toEmails
+        .map((v: unknown) => String(v ?? "").trim())
+        .filter((v: string) => v.length > 0);
     } else if (typeof body.toEmails === "string") {
       toEmailsArray = body.toEmails
         .split(/[,\s]+/)
-        .map((v) => v.trim())
-        .filter(Boolean);
+        .map((v: string) => v.trim())
+        .filter((v: string) => v.length > 0);
     }
-
-    toEmailsArray = toEmailsArray.filter(Boolean);
 
     if (sendAsEmail) {
       if (toEmailsArray.length === 0) {
@@ -175,7 +170,7 @@ export async function POST(req: NextRequest) {
           { status: 400 }
         );
       }
-      const bad = toEmailsArray.find((addr) => !isValidEmail(addr));
+      const bad = toEmailsArray.find((addr: string) => !isValidEmail(addr));
       if (bad) {
         return NextResponse.json(
           { error: `Invalid recipient email: ${bad}` },
@@ -190,8 +185,7 @@ export async function POST(req: NextRequest) {
 
     const toEmailsText = toEmailsArray.length ? toEmailsArray.join(",") : null;
 
-    // 1) Insert the message first (refresh-safe)
-    const insertPayload: any = {
+    const insertPayload: Record<string, unknown> = {
       user_email: userEmail,
       case_id: caseId,
       subject,
@@ -219,7 +213,6 @@ export async function POST(req: NextRequest) {
 
     let message = mapRowToMessage(inserted);
 
-    // 2) If email requested, send via Resend provider-direct
     if (sendAsEmail) {
       const sendRes = await sendViaResend({
         to: toEmailsArray,
@@ -228,7 +221,6 @@ export async function POST(req: NextRequest) {
       });
 
       if (!sendRes.ok) {
-        // Update persisted state to failed (truthful)
         const { data: updated } = await supabase
           .from("messages")
           .update({
@@ -244,10 +236,7 @@ export async function POST(req: NextRequest) {
         if (updated) message = mapRowToMessage(updated);
 
         return NextResponse.json(
-          {
-            error: sendRes.error,
-            message,
-          },
+          { error: sendRes.error, message },
           { status: 502 }
         );
       }
@@ -268,8 +257,6 @@ export async function POST(req: NextRequest) {
 
       if (updateErr || !updated) {
         console.error("Supabase update after Resend send failed:", updateErr);
-        // Email may have been sent, but DB status couldn't be updated.
-        // Truthful response: fail the request so UI doesn't claim success.
         return NextResponse.json(
           {
             error:
@@ -283,17 +270,11 @@ export async function POST(req: NextRequest) {
       message = mapRowToMessage(updated);
 
       return NextResponse.json(
-        {
-          ok: true,
-          message,
-          email: sendRes.email,
-          provider: "resend",
-        },
+        { ok: true, message, email: sendRes.email, provider: "resend" },
         { status: 201 }
       );
     }
 
-    // Internal-only
     return NextResponse.json({ ok: true, message }, { status: 201 });
   } catch (err) {
     console.error("Unexpected POST /api/messages error:", err);
