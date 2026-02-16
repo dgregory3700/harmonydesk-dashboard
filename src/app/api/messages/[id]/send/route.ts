@@ -46,10 +46,28 @@ function isValidEmail(value: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v);
 }
 
+function parseToEmails(input: unknown): string[] {
+  if (Array.isArray(input)) {
+    return input
+      .map((v: unknown) => String(v ?? "").trim())
+      .filter((v: string) => v.length > 0);
+  }
+
+  if (typeof input === "string") {
+    return input
+      .split(/[,\s]+/)
+      .map((v: string) => v.trim())
+      .filter((v: string) => v.length > 0);
+  }
+
+  return [];
+}
+
 async function sendViaResend(args: {
   to: string[];
   subject: string;
   bodyText: string;
+  replyTo: string; // mediator email (Reply-To)
 }) {
   const apiKey = process.env.RESEND_API_KEY;
   const from = process.env.HD_EMAIL_FROM;
@@ -68,6 +86,7 @@ async function sendViaResend(args: {
       to: args.to,
       subject: args.subject,
       text: args.bodyText,
+      reply_to: args.replyTo,
     }),
   });
 
@@ -81,23 +100,6 @@ async function sendViaResend(args: {
 
   const json = (await res.json().catch(() => ({}))) as unknown;
   return { ok: true as const, email: json, from };
-}
-
-function parseToEmails(input: unknown): string[] {
-  if (Array.isArray(input)) {
-    return input
-      .map((v: unknown) => String(v ?? "").trim())
-      .filter((v: string) => v.length > 0);
-  }
-
-  if (typeof input === "string") {
-    return input
-      .split(/[,\s]+/)
-      .map((v: string) => v.trim())
-      .filter((v: string) => v.length > 0);
-  }
-
-  return [];
 }
 
 export async function POST(req: NextRequest, context: IdContext) {
@@ -167,11 +169,12 @@ export async function POST(req: NextRequest, context: IdContext) {
 
     message = mapRowToMessage(pendingRow);
 
-    // Send via Resend provider-direct
+    // Send via Resend provider-direct (Reply-To goes to mediator email)
     const sendRes = await sendViaResend({
       to: toEmailsArray,
       subject: message.subject,
       bodyText: message.body,
+      replyTo: userEmail,
     });
 
     if (!sendRes.ok) {
@@ -190,9 +193,7 @@ export async function POST(req: NextRequest, context: IdContext) {
         console.error("Supabase update (mark failed) error:", failUpdErr);
       }
 
-      if (failedRow) {
-        message = mapRowToMessage(failedRow);
-      }
+      if (failedRow) message = mapRowToMessage(failedRow);
 
       return NextResponse.json(
         { error: sendRes.error, message },
