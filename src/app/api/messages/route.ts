@@ -38,6 +38,7 @@ function mapRowToMessage(row: any): Message {
   };
 }
 
+// Minimal email validation; server is the source of truth.
 function isValidEmail(value: string): boolean {
   const v = value.trim();
   if (!v) return false;
@@ -48,6 +49,7 @@ async function sendViaResend(args: {
   to: string[];
   subject: string;
   bodyText: string;
+  replyTo: string; // mediator email
 }) {
   const apiKey = process.env.RESEND_API_KEY;
   const from = process.env.HD_EMAIL_FROM;
@@ -66,6 +68,7 @@ async function sendViaResend(args: {
       to: args.to,
       subject: args.subject,
       text: args.bodyText,
+      reply_to: args.replyTo,
     }),
   });
 
@@ -133,7 +136,7 @@ export async function POST(req: NextRequest) {
 
     const { supabase, userEmail } = auth;
 
-    const body: any = await req.json();
+    const body: any = await req.json().catch(() => ({}));
 
     const subject = String(body.subject ?? "").trim();
     const messageBody = String(body.body ?? "").trim();
@@ -151,19 +154,20 @@ export async function POST(req: NextRequest) {
 
     const sendAsEmail = !!body.sendAsEmail;
 
-    // Accept toEmails as array, or comma/space-separated string.
+    // Accept toEmails as array, or comma-separated string as fallback.
     let toEmailsArray: string[] = [];
-
     if (Array.isArray(body.toEmails)) {
-      toEmailsArray = body.toEmails
-        .map((v: unknown) => String(v ?? "").trim())
-        .filter((v: string) => v.length > 0);
+      toEmailsArray = body.toEmails.map((v: unknown) =>
+        String(v ?? "").trim()
+      );
     } else if (typeof body.toEmails === "string") {
       toEmailsArray = body.toEmails
         .split(/[,\s]+/)
         .map((v: string) => v.trim())
         .filter((v: string) => v.length > 0);
     }
+
+    toEmailsArray = toEmailsArray.filter((v: string) => v.length > 0);
 
     if (sendAsEmail) {
       if (toEmailsArray.length === 0) {
@@ -187,7 +191,8 @@ export async function POST(req: NextRequest) {
 
     const toEmailsText = toEmailsArray.length ? toEmailsArray.join(",") : null;
 
-    const insertPayload: Record<string, unknown> = {
+    // 1) Insert the message first (refresh-safe)
+    const insertPayload: any = {
       user_email: userEmail,
       case_id: caseId,
       subject,
@@ -215,16 +220,17 @@ export async function POST(req: NextRequest) {
 
     let message = mapRowToMessage(inserted);
 
+    // 2) If email requested, send via Resend provider-direct with Reply-To = mediator email
     if (sendAsEmail) {
       const sendRes = await sendViaResend({
         to: toEmailsArray,
         subject,
         bodyText: messageBody,
+        replyTo: userEmail,
       });
 
       if (!sendRes.ok) {
-        // Persist truthful failure state (best-effort).
-        const { data: updated, error: updateFailErr } = await supabase
+        const { data: updated, error: updateErr } = await supabase
           .from("messages")
           .update({
             email_status: "failed",
@@ -235,14 +241,9 @@ export async function POST(req: NextRequest) {
           .select("*")
           .single();
 
-        if (updateFailErr) {
-          console.error(
-            "Supabase update (mark email failed) error:",
-            updateFailErr
-          );
-        }
-
-        if (updated) {
+        if (updateErr) {
+          console.error("Supabase update after failed send:", updateErr);
+        } else if (updated) {
           message = mapRowToMessage(updated);
         }
 
@@ -286,6 +287,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // Internal-only
     return NextResponse.json({ ok: true, message }, { status: 201 });
   } catch (err) {
     console.error("Unexpected POST /api/messages error:", err);
