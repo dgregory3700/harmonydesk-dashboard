@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, Suspense, useEffect, useState } from "react";
+import { FormEvent, Suspense, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 
@@ -17,19 +17,30 @@ type MediationCase = {
   notes: string | null;
 };
 
-type Message = {
+type ApiMessage = {
   id: string;
+  userEmail?: string;
   caseId: string | null;
   subject: string;
   body: string;
   createdAt: string;
+  direction?: "internal" | "email_outbound";
+  to_emails?: string | null;
+  from_email?: string | null;
+  sent_at?: string | null;
+  email_status?: "pending" | "sent" | "failed" | null;
 };
 
-// Inner component that actually uses useSearchParams
+function isValidEmail(value: string): boolean {
+  const trimmed = value.trim();
+  if (!trimmed) return false;
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed);
+}
+
 function NewMessagePageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const preselectedCaseId = searchParams.get("caseId"); // e.g. /messages/new?caseId=123
+  const preselectedCaseId = searchParams.get("caseId");
 
   const [cases, setCases] = useState<MediationCase[]>([]);
   const [loadingCases, setLoadingCases] = useState(true);
@@ -39,13 +50,22 @@ function NewMessagePageInner() {
   const [subject, setSubject] = useState("");
   const [body, setBody] = useState("");
 
-  // email options
   const [sendAsEmail, setSendAsEmail] = useState(false);
   const [toEmail, setToEmail] = useState("");
 
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [emailInfo, setEmailInfo] = useState<string | null>(null);
+
+  // If email fails but message is saved, the API returns { message } with non-200.
+  const [savedMessageId, setSavedMessageId] = useState<string | null>(null);
+
+  const emailFieldError = useMemo(() => {
+    if (!sendAsEmail) return null;
+    const v = toEmail.trim();
+    if (!v) return "Please provide an email address to send to.";
+    if (!isValidEmail(v)) return "This doesn't look like a valid email address.";
+    return null;
+  }, [sendAsEmail, toEmail]);
 
   useEffect(() => {
     async function loadCases() {
@@ -54,9 +74,7 @@ function NewMessagePageInner() {
         setCasesError(null);
 
         const res = await fetch("/api/cases");
-        if (!res.ok) {
-          throw new Error("Failed to load cases");
-        }
+        if (!res.ok) throw new Error("Failed to load cases");
 
         const data = (await res.json()) as MediationCase[];
         setCases(data);
@@ -71,15 +89,12 @@ function NewMessagePageInner() {
     loadCases();
   }, []);
 
-  // 🔽 Preselect from ?caseId=... once cases are loaded
   useEffect(() => {
     if (!preselectedCaseId) return;
     if (!cases || cases.length === 0) return;
 
     setCaseId((current) => {
-      // don't override if user has already chosen something
       if (current) return current;
-
       const match = cases.find((c) => c.id === preselectedCaseId);
       return match ? match.id : current;
     });
@@ -92,7 +107,7 @@ function NewMessagePageInner() {
     try {
       setSubmitting(true);
       setError(null);
-      setEmailInfo(null);
+      setSavedMessageId(null);
 
       if (!subject.trim() || !body.trim()) {
         setError("Subject and message body are required.");
@@ -100,63 +115,46 @@ function NewMessagePageInner() {
         return;
       }
 
-      if (sendAsEmail && !toEmail.trim()) {
-        setError("Please provide an email address to send to.");
+      if (emailFieldError) {
+        setError(emailFieldError);
         setSubmitting(false);
         return;
       }
 
-      // 1) Save the message like before
+      const payload: any = {
+        subject: subject.trim(),
+        body: body.trim(),
+        caseId: caseId || null,
+        sendAsEmail: sendAsEmail,
+        toEmails: sendAsEmail ? [toEmail.trim()] : [],
+        direction: sendAsEmail ? "email_outbound" : "internal",
+      };
+
       const res = await fetch("/api/messages", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          subject: subject.trim(),
-          body: body.trim(),
-          caseId: caseId || null,
-        }),
+        body: JSON.stringify(payload),
       });
 
+      const json = await res.json().catch(() => ({} as any));
+
       if (!res.ok) {
-        const bodyJson = await res.json().catch(() => ({}));
-        throw new Error(bodyJson?.error || "Failed to create message");
-      }
-
-      const created = (await res.json()) as Message;
-
-      // 2) Optionally send email (does NOT affect saving)
-      if (sendAsEmail && toEmail.trim()) {
-        try {
-          const emailRes = await fetch("/api/send-email", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              subject: subject.trim(),
-              body: body.trim(),
-              to: [toEmail.trim()],
-              caseId: created.id,
-            }),
-          });
-
-          if (emailRes.ok) {
-            const emailJson = await emailRes.json().catch(() => ({}));
-            setEmailInfo(
-              `Email sent via ${emailJson.provider || "sendgrid"} from ${
-                emailJson.from || "contact@harmonydesk.ai"
-              }.`
-            );
-          } else {
-            console.error("Email send failed with status:", emailRes.status);
-            setEmailInfo("Message saved, but sending email failed.");
-          }
-        } catch (err) {
-          console.error("Error calling /api/send-email:", err);
-          setEmailInfo("Message saved, but sending email failed.");
+        // Truthful behavior: if the message was saved but email failed,
+        // API returns { error, message } with non-200.
+        const maybeMsg = (json?.message ?? null) as ApiMessage | null;
+        if (maybeMsg?.id) {
+          setSavedMessageId(maybeMsg.id);
         }
+        throw new Error(json?.error || "Failed to create message");
       }
 
-      // 3) Go to message detail
-      router.push(`/messages/${created.id}`);
+      const message = (json?.message ?? json) as ApiMessage;
+
+      if (!message?.id) {
+        throw new Error("Message created, but response was missing an id.");
+      }
+
+      router.push(`/messages/${message.id}`);
     } catch (err: any) {
       console.error("Error creating message:", err);
       setError(err?.message ?? "Failed to create message");
@@ -166,7 +164,6 @@ function NewMessagePageInner() {
 
   return (
     <div className="space-y-6">
-      {/* Breadcrumb */}
       <div className="flex flex-col gap-1">
         <Link
           href="/messages"
@@ -186,7 +183,6 @@ function NewMessagePageInner() {
       </div>
 
       <form onSubmit={handleSubmit} className="grid gap-4 md:grid-cols-3">
-        {/* Left: message content */}
         <div className="md:col-span-2 space-y-4">
           <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-4 shadow-sm space-y-3">
             <div className="space-y-1">
@@ -217,10 +213,8 @@ function NewMessagePageInner() {
           </div>
         </div>
 
-        {/* Right: case link & actions */}
         <div className="space-y-4">
           <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-4 shadow-sm space-y-3">
-            {/* Link to case */}
             <div className="space-y-1">
               <label className="block text-xs font-medium text-slate-400">
                 Link to case (optional)
@@ -245,7 +239,6 @@ function NewMessagePageInner() {
               )}
             </div>
 
-            {/* Email options */}
             <div className="space-y-2 border-t border-slate-800 pt-3 mt-2">
               <label className="flex items-center gap-2 text-xs text-slate-400 hover:text-slate-200 cursor-pointer">
                 <input
@@ -270,9 +263,10 @@ function NewMessagePageInner() {
                     placeholder="person@example.com"
                   />
                   <p className="text-[11px] text-slate-500">
-                    For now, emails are sent from{" "}
+                    Sent via Resend from{" "}
                     <span className="font-medium text-slate-400">
-                      contact@harmonydesk.ai
+                      {process.env.NEXT_PUBLIC_HD_EMAIL_FROM ||
+                        "your verified sender"}
                     </span>
                     .
                   </p>
@@ -288,15 +282,23 @@ function NewMessagePageInner() {
               {submitting ? "Saving…" : "Save message"}
             </button>
 
-            {error && <p className="text-xs text-red-400">{error}</p>}
-
-            {emailInfo && (
-              <p className="text-[11px] text-slate-400">{emailInfo}</p>
+            {error && (
+              <div className="space-y-2">
+                <p className="text-xs text-red-400">{error}</p>
+                {savedMessageId && (
+                  <Link
+                    href={`/messages/${savedMessageId}`}
+                    className="inline-block text-xs font-medium text-sky-400 hover:text-sky-300 hover:underline"
+                  >
+                    View saved message →
+                  </Link>
+                )}
+              </div>
             )}
 
             <p className="text-[11px] text-slate-500">
-              Messages are private to you for now. Later we can sync them with
-              email history.
+              Deterministic rule: the UI only claims email delivery when the
+              provider confirms success.
             </p>
           </div>
         </div>
@@ -305,7 +307,6 @@ function NewMessagePageInner() {
   );
 }
 
-// Wrapper that provides the Suspense boundary required for useSearchParams
 export default function NewMessagePage() {
   return (
     <Suspense
