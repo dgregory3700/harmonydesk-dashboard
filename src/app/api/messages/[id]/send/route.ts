@@ -74,8 +74,40 @@ async function domainLooksRoutable(email: string): Promise<boolean> {
   }
 }
 
+// Accept multiple possible request shapes and normalize to string[]
+function parseRecipients(body: any): string[] {
+  // Preferred: toEmail (single)
+  if (typeof body?.toEmail === "string" && body.toEmail.trim()) {
+    return [body.toEmail.trim()];
+  }
+
+  // UI might send toEmails as comma-separated string
+  if (typeof body?.toEmails === "string" && body.toEmails.trim()) {
+    return body.toEmails
+      .split(/[,\s]+/)
+      .map((s: string) => s.trim())
+      .filter((s: string) => s.length > 0);
+  }
+
+  // Or toEmails as array
+  if (Array.isArray(body?.toEmails)) {
+    return body.toEmails
+      .map((v: any) => String(v ?? "").trim())
+      .filter((s: string) => s.length > 0);
+  }
+
+  // Legacy shape: to: [...]
+  if (Array.isArray(body?.to)) {
+    return body.to
+      .map((v: any) => String(v ?? "").trim())
+      .filter((s: string) => s.length > 0);
+  }
+
+  return [];
+}
+
 async function sendViaResend(args: {
-  to: string;
+  to: string[];
   subject: string;
   text: string;
   replyTo: string; // mediator email
@@ -99,7 +131,7 @@ async function sendViaResend(args: {
       },
       body: JSON.stringify({
         from,
-        to: [args.to],
+        to: args.to,
         subject: args.subject,
         text: args.text,
         reply_to: args.replyTo,
@@ -140,28 +172,30 @@ export async function POST(req: NextRequest, context: IdContext) {
     const { id } = await context.params;
 
     const body = await req.json().catch(() => ({}));
-    const toEmail = typeof body.toEmail === "string" ? body.toEmail.trim() : "";
+    const recipients = parseRecipients(body);
 
-    if (!toEmail) {
+    if (recipients.length === 0) {
       return NextResponse.json(
         { error: "Missing recipient email (toEmail)" },
         { status: 400 }
       );
     }
 
-    if (!isValidEmailSyntax(toEmail)) {
-      return NextResponse.json(
-        { error: "Invalid recipient email address" },
-        { status: 400 }
-      );
-    }
-
-    const routable = await domainLooksRoutable(toEmail);
-    if (!routable) {
-      return NextResponse.json(
-        { error: "Recipient email domain does not appear to accept mail" },
-        { status: 400 }
-      );
+    // Validate recipients
+    for (const addr of recipients) {
+      if (!isValidEmailSyntax(addr)) {
+        return NextResponse.json(
+          { error: "Invalid recipient email address" },
+          { status: 400 }
+        );
+      }
+      const routable = await domainLooksRoutable(addr);
+      if (!routable) {
+        return NextResponse.json(
+          { error: "Recipient email domain does not appear to accept mail" },
+          { status: 400 }
+        );
+      }
     }
 
     // 1) Load message (scoped)
@@ -182,20 +216,21 @@ export async function POST(req: NextRequest, context: IdContext) {
 
     // 2) Send via Resend (provider-direct)
     const send = await sendViaResend({
-      to: toEmail,
+      to: recipients,
       subject: String(row.subject ?? ""),
       text: String(row.body ?? ""),
       replyTo: userEmail,
     });
 
+    const toEmailsText = recipients.join(",");
+
     // 3) Persist truthful state
     if (!send.ok) {
-      // Best-effort update to failed. If this update fails, we still return failure.
       const { data: updatedRow, error: updateFailErr } = await supabase
         .from("messages")
         .update({
           direction: "email_outbound",
-          to_emails: toEmail,
+          to_emails: toEmailsText,
           email_status: "failed",
           from_email: process.env.HD_EMAIL_FROM ?? null,
           sent_at: null,
@@ -206,7 +241,10 @@ export async function POST(req: NextRequest, context: IdContext) {
         .single();
 
       if (updateFailErr) {
-        console.error("Supabase update failed after send failure:", updateFailErr);
+        console.error(
+          "Supabase update failed after send failure:",
+          updateFailErr
+        );
       }
 
       const message = updatedRow ? mapRowToMessage(updatedRow) : mapRowToMessage(row);
@@ -223,7 +261,7 @@ export async function POST(req: NextRequest, context: IdContext) {
       .from("messages")
       .update({
         direction: "email_outbound",
-        to_emails: toEmail,
+        to_emails: toEmailsText,
         email_status: "sent",
         sent_at: nowIso,
         from_email: send.from,
@@ -235,7 +273,6 @@ export async function POST(req: NextRequest, context: IdContext) {
 
     if (updateOkErr || !updatedRow) {
       console.error("Supabase update failed after successful send:", updateOkErr);
-      // Do NOT claim success if DB state can't be updated.
       return NextResponse.json(
         {
           error:
@@ -252,7 +289,7 @@ export async function POST(req: NextRequest, context: IdContext) {
       message: mapRowToMessage(updatedRow),
       email: {
         messageId: send.messageId,
-        to: toEmail,
+        to: recipients,
         replyTo: userEmail,
         from: send.from,
       },
