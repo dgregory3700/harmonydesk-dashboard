@@ -1,9 +1,9 @@
-// src/app/api/messages/[id]/route.ts
-
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuthedSupabase } from "@/lib/authServer";
 
 type IdContext = { params: Promise<{ id: string }> };
+
+type MessageDirection = "internal" | "email_outbound";
 
 type Message = {
   id: string;
@@ -12,6 +12,12 @@ type Message = {
   subject: string;
   body: string;
   createdAt: string;
+
+  direction: MessageDirection;
+  to_emails: string | null;
+  from_email: string | null;
+  sent_at: string | null;
+  email_status: "pending" | "sent" | "failed" | null;
 };
 
 function mapRowToMessage(row: any): Message {
@@ -22,13 +28,17 @@ function mapRowToMessage(row: any): Message {
     subject: row.subject,
     body: row.body,
     createdAt: row.created_at,
+
+    direction: (row.direction as MessageDirection) ?? "internal",
+    to_emails: row.to_emails ?? null,
+    from_email: row.from_email ?? null,
+    sent_at: row.sent_at ?? null,
+    email_status:
+      (row.email_status as "pending" | "sent" | "failed" | null) ?? null,
   };
 }
 
-export async function GET(
-  _req: NextRequest,
-  context: IdContext
-) {
+export async function GET(_req: NextRequest, context: IdContext) {
   try {
     const auth = await requireAuthedSupabase();
     if (!auth.ok) return auth.res;
@@ -55,10 +65,7 @@ export async function GET(
   }
 }
 
-export async function DELETE(
-  _req: NextRequest,
-  context: IdContext
-) {
+export async function DELETE(_req: NextRequest, context: IdContext) {
   try {
     const auth = await requireAuthedSupabase();
     if (!auth.ok) return auth.res;
@@ -66,11 +73,14 @@ export async function DELETE(
     const { supabase, userEmail } = auth;
     const { id } = await context.params;
 
-    const { error } = await supabase
+    // Avoid "false success": select the deleted row
+    const { data, error } = await supabase
       .from("messages")
       .delete()
       .eq("id", id)
-      .eq("user_email", userEmail);
+      .eq("user_email", userEmail)
+      .select("id")
+      .maybeSingle();
 
     if (error) {
       console.error("Supabase DELETE message error:", error);
@@ -80,7 +90,11 @@ export async function DELETE(
       );
     }
 
-    return NextResponse.json({ success: true }, { status: 200 });
+    if (!data) {
+      return NextResponse.json({ error: "Message not found" }, { status: 404 });
+    }
+
+    return NextResponse.json({ ok: true }, { status: 200 });
   } catch (err) {
     console.error("Unexpected DELETE /api/messages/[id] error:", err);
     return NextResponse.json({ error: "Server error" }, { status: 500 });
