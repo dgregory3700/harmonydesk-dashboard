@@ -102,7 +102,7 @@ async function sendViaResend(args: {
         to: [args.to],
         subject: args.subject,
         text: args.text,
-        reply_to: args.replyTo, // replies go to mediator inbox
+        reply_to: args.replyTo,
       }),
       signal: controller.signal,
     });
@@ -173,37 +173,43 @@ export async function POST(req: NextRequest, context: IdContext) {
       .single();
 
     if (fetchError || !row) {
-      console.error("Supabase POST /api/messages/[id]/send fetch error:", fetchError);
+      console.error(
+        "Supabase POST /api/messages/[id]/send fetch error:",
+        fetchError
+      );
       return NextResponse.json({ error: "Message not found" }, { status: 404 });
     }
 
-    let message = mapRowToMessage(row);
-
-    // 2) Send email via Resend provider-direct (Reply-To = mediator)
+    // 2) Send via Resend (provider-direct)
     const send = await sendViaResend({
       to: toEmail,
-      subject: message.subject,
-      text: message.body,
+      subject: String(row.subject ?? ""),
+      text: String(row.body ?? ""),
       replyTo: userEmail,
     });
 
+    // 3) Persist truthful state
     if (!send.ok) {
-      // Persist truthful failure
-      const { data: updated } = await supabase
+      // Best-effort update to failed. If this update fails, we still return failure.
+      const { data: updatedRow, error: updateFailErr } = await supabase
         .from("messages")
         .update({
           direction: "email_outbound",
           to_emails: toEmail,
           email_status: "failed",
           from_email: process.env.HD_EMAIL_FROM ?? null,
+          sent_at: null,
         })
         .eq("id", id)
         .eq("user_email", userEmail)
         .select("*")
-        .single()
-        .catch(() => ({ data: null as any }));
+        .single();
 
-      if (updated) message = mapRowToMessage(updated);
+      if (updateFailErr) {
+        console.error("Supabase update failed after send failure:", updateFailErr);
+      }
+
+      const message = updatedRow ? mapRowToMessage(updatedRow) : mapRowToMessage(row);
 
       return NextResponse.json(
         { error: send.error, provider: "resend", message },
@@ -213,8 +219,7 @@ export async function POST(req: NextRequest, context: IdContext) {
 
     const nowIso = new Date().toISOString();
 
-    // 3) Persist truthful success
-    const { data: updated, error: updateErr } = await supabase
+    const { data: updatedRow, error: updateOkErr } = await supabase
       .from("messages")
       .update({
         direction: "email_outbound",
@@ -228,31 +233,30 @@ export async function POST(req: NextRequest, context: IdContext) {
       .select("*")
       .single();
 
-    if (updateErr || !updated) {
-      console.error("Supabase update after message send failed:", updateErr);
-      // Email may have been sent, but DB state is not updated => do not claim success
+    if (updateOkErr || !updatedRow) {
+      console.error("Supabase update failed after successful send:", updateOkErr);
+      // Do NOT claim success if DB state can't be updated.
       return NextResponse.json(
         {
           error:
             "Email may have been sent, but updating message status failed. Check logs.",
           provider: "resend",
-          message,
         },
         { status: 502 }
       );
     }
 
-    message = mapRowToMessage(updated);
-
-    return NextResponse.json(
-      {
-        ok: true,
-        provider: "resend",
-        message,
-        email: { messageId: send.messageId, to: toEmail, replyTo: userEmail, from: send.from },
+    return NextResponse.json({
+      ok: true,
+      provider: "resend",
+      message: mapRowToMessage(updatedRow),
+      email: {
+        messageId: send.messageId,
+        to: toEmail,
+        replyTo: userEmail,
+        from: send.from,
       },
-      { status: 200 }
-    );
+    });
   } catch (err) {
     console.error("Unexpected POST /api/messages/[id]/send error:", err);
     return NextResponse.json({ error: "Server error" }, { status: 500 });
