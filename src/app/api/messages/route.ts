@@ -11,7 +11,6 @@ export type Message = {
   body: string;
   createdAt: string;
 
-  // Email-related fields (optional for existing data)
   direction: MessageDirection;
   to_emails: string | null;
   from_email: string | null;
@@ -28,7 +27,6 @@ function mapRowToMessage(row: any): Message {
     body: row.body,
     createdAt: row.created_at,
 
-    // Email-related fields with safe fallbacks for older rows
     direction: (row.direction as MessageDirection) ?? "internal",
     to_emails: row.to_emails ?? null,
     from_email: row.from_email ?? null,
@@ -36,6 +34,55 @@ function mapRowToMessage(row: any): Message {
     email_status:
       (row.email_status as "pending" | "sent" | "failed" | null) ?? null,
   };
+}
+
+// Minimal email validation; server is the source of truth.
+function isValidEmail(value: string): boolean {
+  const v = value.trim();
+  if (!v) return false;
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v);
+}
+
+async function sendViaResend(args: {
+  to: string[];
+  subject: string;
+  bodyText: string;
+}) {
+  const apiKey = process.env.RESEND_API_KEY;
+  const from = process.env.HD_EMAIL_FROM;
+
+  if (!apiKey) {
+    return { ok: false as const, error: "Missing RESEND_API_KEY" };
+  }
+  if (!from) {
+    return { ok: false as const, error: "Missing HD_EMAIL_FROM" };
+  }
+
+  const res = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      from,
+      to: args.to,
+      subject: args.subject,
+      // Keep it simple/deterministic: plain text only for now.
+      text: args.bodyText,
+    }),
+  });
+
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    return {
+      ok: false as const,
+      error: `Resend send failed (${res.status})${text ? `: ${text}` : ""}`,
+    };
+  }
+
+  const json = (await res.json().catch(() => ({}))) as any;
+  return { ok: true as const, email: json, from };
 }
 
 export async function GET(req: NextRequest) {
@@ -55,9 +102,7 @@ export async function GET(req: NextRequest) {
       .eq("user_email", userEmail)
       .order("created_at", { ascending: false });
 
-    if (caseId) {
-      query = query.eq("case_id", caseId);
-    }
+    if (caseId) query = query.eq("case_id", caseId);
 
     const { data, error } = await query;
 
@@ -108,20 +153,44 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // These fields are coming from the New Message form via MessagesNewClient.tsx
     const sendAsEmail = !!body.sendAsEmail;
-    const directionRaw = body.direction as MessageDirection | undefined;
-    const direction: MessageDirection =
-      directionRaw === "email_outbound" ? "email_outbound" : "internal";
 
-    const toEmailsArray: string[] = Array.isArray(body.toEmails)
-      ? body.toEmails
-      : [];
+    // Accept toEmails as array, or comma-separated string as fallback.
+    let toEmailsArray: string[] = [];
+    if (Array.isArray(body.toEmails)) {
+      toEmailsArray = body.toEmails.map((v: any) => String(v || "").trim());
+    } else if (typeof body.toEmails === "string") {
+      toEmailsArray = body.toEmails
+        .split(/[,\s]+/)
+        .map((v) => v.trim())
+        .filter(Boolean);
+    }
 
-    // Store as comma-separated string for now; easy to query and display.
-    const toEmailsText =
-      toEmailsArray.length > 0 ? toEmailsArray.join(",") : null;
+    toEmailsArray = toEmailsArray.filter(Boolean);
 
+    if (sendAsEmail) {
+      if (toEmailsArray.length === 0) {
+        return NextResponse.json(
+          { error: "toEmails is required when sendAsEmail is true" },
+          { status: 400 }
+        );
+      }
+      const bad = toEmailsArray.find((addr) => !isValidEmail(addr));
+      if (bad) {
+        return NextResponse.json(
+          { error: `Invalid recipient email: ${bad}` },
+          { status: 400 }
+        );
+      }
+    }
+
+    const direction: MessageDirection = sendAsEmail
+      ? "email_outbound"
+      : "internal";
+
+    const toEmailsText = toEmailsArray.length ? toEmailsArray.join(",") : null;
+
+    // 1) Insert the message first (refresh-safe)
     const insertPayload: any = {
       user_email: userEmail,
       case_id: caseId,
@@ -130,23 +199,102 @@ export async function POST(req: NextRequest) {
       direction,
       to_emails: toEmailsText,
       email_status: sendAsEmail ? "pending" : null,
+      from_email: null,
+      sent_at: null,
     };
 
-    const { data, error } = await supabase
+    const { data: inserted, error: insertError } = await supabase
       .from("messages")
       .insert(insertPayload)
       .select("*")
       .single();
 
-    if (error || !data) {
-      console.error("Supabase POST /api/messages error:", error);
+    if (insertError || !inserted) {
+      console.error("Supabase POST /api/messages insert error:", insertError);
       return NextResponse.json(
         { error: "Failed to create message" },
         { status: 500 }
       );
     }
 
-    return NextResponse.json(mapRowToMessage(data), { status: 201 });
+    let message = mapRowToMessage(inserted);
+
+    // 2) If email requested, send via Resend provider-direct
+    if (sendAsEmail) {
+      const sendRes = await sendViaResend({
+        to: toEmailsArray,
+        subject,
+        bodyText: messageBody,
+      });
+
+      if (!sendRes.ok) {
+        // Update persisted state to failed (truthful)
+        const { data: updated } = await supabase
+          .from("messages")
+          .update({
+            email_status: "failed",
+            from_email: process.env.HD_EMAIL_FROM ?? null,
+          })
+          .eq("id", message.id)
+          .eq("user_email", userEmail)
+          .select("*")
+          .single()
+          .catch(() => ({ data: null as any }));
+
+        if (updated) message = mapRowToMessage(updated);
+
+        return NextResponse.json(
+          {
+            error: sendRes.error,
+            message,
+          },
+          { status: 502 }
+        );
+      }
+
+      const nowIso = new Date().toISOString();
+
+      const { data: updated, error: updateErr } = await supabase
+        .from("messages")
+        .update({
+          email_status: "sent",
+          sent_at: nowIso,
+          from_email: sendRes.from,
+        })
+        .eq("id", message.id)
+        .eq("user_email", userEmail)
+        .select("*")
+        .single();
+
+      if (updateErr || !updated) {
+        console.error("Supabase update after Resend send failed:", updateErr);
+        // Email may have been sent, but DB status couldn't be updated.
+        // Truthful response: fail the request so UI doesn't claim success.
+        return NextResponse.json(
+          {
+            error:
+              "Email may have been sent, but updating message status failed. Check logs.",
+            message,
+          },
+          { status: 502 }
+        );
+      }
+
+      message = mapRowToMessage(updated);
+
+      return NextResponse.json(
+        {
+          ok: true,
+          message,
+          email: sendRes.email,
+          provider: "resend",
+        },
+        { status: 201 }
+      );
+    }
+
+    // Internal-only
+    return NextResponse.json({ ok: true, message }, { status: 201 });
   } catch (err) {
     console.error("Unexpected POST /api/messages error:", err);
     return NextResponse.json({ error: "Server error" }, { status: 500 });
