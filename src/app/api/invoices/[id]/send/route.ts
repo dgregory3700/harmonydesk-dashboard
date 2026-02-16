@@ -96,6 +96,13 @@ function buildInvoiceEmail(row: InvoiceRow) {
   return { subject, text, html };
 }
 
+// Minimal email validation; server is source of truth (deterministic negative tests)
+function isValidEmail(value: string): boolean {
+  const v = value.trim();
+  if (!v) return false;
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v);
+}
+
 async function sendViaResend(args: {
   to: string;
   subject: string;
@@ -126,7 +133,7 @@ async function sendViaResend(args: {
         subject: args.subject,
         html: args.html,
         text: args.text,
-        reply_to: args.replyTo, // ✅ Option 1: replies go to mediator inbox
+        reply_to: args.replyTo,
       }),
       signal: controller.signal,
     });
@@ -170,6 +177,14 @@ export async function POST(req: NextRequest, context: IdContext) {
     if (!toEmail) {
       return NextResponse.json(
         { error: "Missing recipient email (toEmail)" },
+        { status: 400 }
+      );
+    }
+
+    // ✅ Deterministic failure for bad input
+    if (!isValidEmail(toEmail)) {
+      return NextResponse.json(
+        { error: "Invalid recipient email address" },
         { status: 400 }
       );
     }
