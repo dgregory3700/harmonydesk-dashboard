@@ -24,10 +24,16 @@ type NewInvoiceForm = {
   rate: string;
 };
 
+type BannerState =
+  | { kind: "success"; text: string; invoiceId?: string }
+  | { kind: "error"; text: string; invoiceId?: string }
+  | null;
+
 export default function BillingOverview() {
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
   const [formOpen, setFormOpen] = useState(false);
   const [newInvoice, setNewInvoice] = useState<NewInvoiceForm>({
     caseNumber: "",
@@ -36,6 +42,9 @@ export default function BillingOverview() {
     hours: "",
     rate: "",
   });
+
+  // Prominent success/failure feedback for sending
+  const [banner, setBanner] = useState<BannerState>(null);
 
   // Load invoices from API (Supabase-backed)
   useEffect(() => {
@@ -78,10 +87,7 @@ export default function BillingOverview() {
     () => ({
       cases: countyInvoices.length,
       hours: countyInvoices.reduce((sum, inv) => sum + inv.hours, 0),
-      amount: countyInvoices.reduce(
-        (sum, inv) => sum + inv.hours * inv.rate,
-        0
-      ),
+      amount: countyInvoices.reduce((sum, inv) => sum + inv.hours * inv.rate, 0),
     }),
     [countyInvoices]
   );
@@ -149,9 +155,7 @@ export default function BillingOverview() {
       const json = await res.json();
       const updated = (json?.invoice ?? json) as Invoice;
 
-      setInvoices((prev) =>
-        prev.map((inv) => (inv.id === id ? updated : inv))
-      );
+      setInvoices((prev) => prev.map((inv) => (inv.id === id ? updated : inv)));
     } catch (err: any) {
       console.error(err);
       alert(err.message || "Could not update invoice");
@@ -166,9 +170,7 @@ export default function BillingOverview() {
     if (!confirmed) return;
 
     try {
-      const res = await fetch(`/api/invoices/${id}`, {
-        method: "DELETE",
-      });
+      const res = await fetch(`/api/invoices/${id}`, { method: "DELETE" });
 
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
@@ -182,22 +184,38 @@ export default function BillingOverview() {
     }
   }
 
+  function describeInvoice(inv: Invoice) {
+    const total = inv.hours * inv.rate;
+    return [
+      `Case: ${inv.caseNumber}`,
+      `Matter: ${inv.matter}`,
+      `Bill to: ${inv.contact}`,
+      `Hours: ${inv.hours.toFixed(2)}`,
+      `Rate: $${inv.rate.toFixed(2)}`,
+      `Total: $${total.toFixed(2)}`,
+    ].join("\n");
+  }
+
+  function extractErrorMessage(body: any): string {
+    if (!body) return "Failed to send invoice.";
+    // Prefer server-provided human message (Resend error) over error codes
+    if (typeof body.message === "string" && body.message.trim()) return body.message.trim();
+    if (typeof body.error === "string" && body.error.trim()) return body.error.trim();
+    return "Failed to send invoice.";
+  }
+
   // ✅ prepare & send with double-check
   async function handlePrepareAndSend(inv: Invoice) {
-    const total = inv.hours * inv.rate;
+    // Clear old banners so mediators don't misread stale success
+    setBanner(null);
 
     const ok = window.confirm(
       [
-        "Please double-check this invoice before sending:",
+        "Please double-check this invoice before emailing it:",
         "",
-        `Case: ${inv.caseNumber}`,
-        `Matter: ${inv.matter}`,
-        `Bill to: ${inv.contact}`,
-        `Hours: ${inv.hours.toFixed(2)}`,
-        `Rate: $${inv.rate.toFixed(2)}`,
-        `Total: $${total.toFixed(2)}`,
+        describeInvoice(inv),
         "",
-        "If everything looks correct, click OK to mark this invoice as Sent.",
+        "Click OK to send this invoice by email.",
       ].join("\n")
     );
 
@@ -205,45 +223,57 @@ export default function BillingOverview() {
 
     try {
       const toEmail = window.prompt("Send invoice to which email address?", "");
-if (!toEmail || !toEmail.trim()) return;
+      if (!toEmail || !toEmail.trim()) return;
 
-const res = await fetch(`/api/invoices/${inv.id}/send`, {
-  method: "POST",
-  headers: { "Content-Type": "application/json" },
-  body: JSON.stringify({ toEmail: toEmail.trim() }),
-});
+      const res = await fetch(`/api/invoices/${inv.id}/send`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ toEmail: toEmail.trim() }),
+      });
+
+      const bodyJson = await res.json().catch(() => ({}));
 
       if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error(data.error || data.message || "Failed to send invoice");
+        const msg = extractErrorMessage(bodyJson);
+        setBanner({
+          kind: "error",
+          invoiceId: inv.id,
+          text: `Send failed: ${msg}`,
+        });
+        return; // do NOT pretend success
       }
 
-      const json = await res.json();
-const updatedInvoice = (json?.invoice ?? json) as Invoice;
+      const updatedInvoice = (bodyJson?.invoice ?? bodyJson) as Invoice;
 
-setInvoices((prev) =>
-  prev.map((invoice) => (invoice.id === inv.id ? updatedInvoice : invoice))
-);
+      setInvoices((prev) =>
+        prev.map((invoice) => (invoice.id === inv.id ? updatedInvoice : invoice))
+      );
 
+      setBanner({
+        kind: "success",
+        invoiceId: inv.id,
+        text: "Invoice email sent successfully.",
+      });
     } catch (err: any) {
       console.error(err);
-      alert(err.message || "Could not send invoice. Please refresh to see the current status.");
+      setBanner({
+        kind: "error",
+        invoiceId: inv.id,
+        text:
+          err?.message
+            ? `Send failed: ${String(err.message)}`
+            : "Send failed: Unknown error.",
+      });
     }
   }
 
   // Simple preview for Sent / county-report invoices
   function handleViewInvoice(inv: Invoice) {
-    const total = inv.hours * inv.rate;
     alert(
       [
         "Invoice details (preview):",
         "",
-        `Case: ${inv.caseNumber}`,
-        `Matter: ${inv.matter}`,
-        `Bill to: ${inv.contact}`,
-        `Hours: ${inv.hours.toFixed(2)}`,
-        `Rate: $${inv.rate.toFixed(2)}`,
-        `Total: $${total.toFixed(2)}`,
+        describeInvoice(inv),
         "",
         "In a future version this will open a full printable invoice.",
       ].join("\n")
@@ -288,11 +318,7 @@ setInvoices((prev) =>
     let cursorY = 20;
 
     doc.setFontSize(14);
-    doc.text(
-      "Pierce County District Court - Month End Report",
-      marginLeft,
-      cursorY
-    );
+    doc.text("Pierce County District Court - Month End Report", marginLeft, cursorY);
 
     cursorY += 8;
     doc.setFontSize(11);
@@ -335,13 +361,9 @@ setInvoices((prev) =>
 
       const total = inv.hours * inv.rate;
       const matterTrunc =
-        inv.matter.length > 40
-          ? inv.matter.slice(0, 37) + "..."
-          : inv.matter;
+        inv.matter.length > 40 ? inv.matter.slice(0, 37) + "..." : inv.matter;
       const contactTrunc =
-        inv.contact.length > 30
-          ? inv.contact.slice(0, 27) + "..."
-          : inv.contact;
+        inv.contact.length > 30 ? inv.contact.slice(0, 27) + "..." : inv.contact;
 
       doc.text(inv.caseNumber, marginLeft, cursorY);
       doc.text(matterTrunc, marginLeft + 40, cursorY);
@@ -353,6 +375,28 @@ setInvoices((prev) =>
     });
 
     doc.save("pierce-county-report.pdf");
+  }
+
+  function StatusBadge({ status }: { status: InvoiceStatus }) {
+    if (status === "Sent") {
+      return (
+        <span className="inline-flex items-center rounded-md border border-emerald-800 bg-emerald-900/20 px-2 py-0.5 text-[11px] font-medium text-emerald-300">
+          Sent
+        </span>
+      );
+    }
+    if (status === "Draft") {
+      return (
+        <span className="inline-flex items-center rounded-md border border-slate-700 bg-slate-800/40 px-2 py-0.5 text-[11px] font-medium text-slate-300">
+          Draft
+        </span>
+      );
+    }
+    return (
+      <span className="inline-flex items-center rounded-md border border-slate-700 bg-slate-800/40 px-2 py-0.5 text-[11px] font-medium text-slate-300">
+        For county report
+      </span>
+    );
   }
 
   return (
@@ -375,16 +419,48 @@ setInvoices((prev) =>
         </div>
       </div>
 
-      {loading && (
-        <p className="text-sm text-slate-500">
-          Loading invoices…
-        </p>
+      {/* Prominent send status banner (truthful) */}
+      {banner && (
+        <div
+          className={[
+            "rounded-xl border p-4 shadow-sm",
+            banner.kind === "success"
+              ? "border-emerald-800 bg-emerald-900/20"
+              : "border-red-800 bg-red-900/20",
+          ].join(" ")}
+        >
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <p
+                className={[
+                  "text-sm font-semibold",
+                  banner.kind === "success" ? "text-emerald-200" : "text-red-200",
+                ].join(" ")}
+              >
+                {banner.kind === "success" ? "Sent" : "Send failed"}
+              </p>
+              <p
+                className={[
+                  "mt-1 text-sm",
+                  banner.kind === "success" ? "text-emerald-100/90" : "text-red-100/90",
+                ].join(" ")}
+              >
+                {banner.text}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setBanner(null)}
+              className="rounded-md border border-slate-700 bg-slate-900 px-3 py-1 text-xs font-medium text-slate-200 hover:bg-slate-800"
+            >
+              Dismiss
+            </button>
+          </div>
+        </div>
       )}
-      {error && (
-        <p className="text-sm text-red-400">
-          {error}
-        </p>
-      )}
+
+      {loading && <p className="text-sm text-slate-500">Loading invoices…</p>}
+      {error && <p className="text-sm text-red-400">{error}</p>}
 
       {/* New invoice card */}
       <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-4 shadow-sm">
@@ -400,10 +476,7 @@ setInvoices((prev) =>
         </div>
 
         {formOpen && (
-          <form
-            onSubmit={handleAddInvoice}
-            className="mt-4 grid gap-3 md:grid-cols-5"
-          >
+          <form onSubmit={handleAddInvoice} className="mt-4 grid gap-3 md:grid-cols-5">
             <div className="md:col-span-1">
               <label className="mb-1 block text-xs font-medium text-slate-400">
                 Case number
@@ -411,9 +484,7 @@ setInvoices((prev) =>
               <input
                 className="w-full rounded-md border border-slate-700 bg-slate-950 text-slate-200 px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500 placeholder-slate-600"
                 value={newInvoice.caseNumber}
-                onChange={(e) =>
-                  handleFormChange("caseNumber", e.target.value)
-                }
+                onChange={(e) => handleFormChange("caseNumber", e.target.value)}
                 required
               />
             </div>
@@ -424,9 +495,7 @@ setInvoices((prev) =>
               <input
                 className="w-full rounded-md border border-slate-700 bg-slate-950 text-slate-200 px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
                 value={newInvoice.matter}
-                onChange={(e) =>
-                  handleFormChange("matter", e.target.value)
-                }
+                onChange={(e) => handleFormChange("matter", e.target.value)}
                 required
               />
             </div>
@@ -437,9 +506,7 @@ setInvoices((prev) =>
               <input
                 className="w-full rounded-md border border-slate-700 bg-slate-950 text-slate-200 px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
                 value={newInvoice.contact}
-                onChange={(e) =>
-                  handleFormChange("contact", e.target.value)
-                }
+                onChange={(e) => handleFormChange("contact", e.target.value)}
                 required
               />
             </div>
@@ -453,9 +520,7 @@ setInvoices((prev) =>
                 step="0.1"
                 className="w-full rounded-md border border-slate-700 bg-slate-950 text-slate-200 px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
                 value={newInvoice.hours}
-                onChange={(e) =>
-                  handleFormChange("hours", e.target.value)
-                }
+                onChange={(e) => handleFormChange("hours", e.target.value)}
                 required
               />
             </div>
@@ -469,9 +534,7 @@ setInvoices((prev) =>
                 step="1"
                 className="w-full rounded-md border border-slate-700 bg-slate-950 text-slate-200 px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
                 value={newInvoice.rate}
-                onChange={(e) =>
-                  handleFormChange("rate", e.target.value)
-                }
+                onChange={(e) => handleFormChange("rate", e.target.value)}
                 required
               />
             </div>
@@ -490,6 +553,7 @@ setInvoices((prev) =>
       {/* Invoice list */}
       <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-4 shadow-sm">
         <h2 className="mb-3 text-sm font-medium text-slate-300">Invoices</h2>
+
         {invoices.length === 0 && !loading ? (
           <p className="text-sm text-slate-500">
             No invoices yet. Use “New invoice” to create your first one.
@@ -498,13 +562,17 @@ setInvoices((prev) =>
           <div className="space-y-3">
             {invoices.map((inv) => {
               const total = inv.hours * inv.rate;
+
               return (
                 <div
                   key={inv.id}
                   className="flex flex-col gap-2 rounded-lg border border-slate-800 bg-slate-950 p-3 md:flex-row md:items-center md:justify-between"
                 >
                   <div>
-                    <p className="text-sm font-medium text-slate-200">{inv.matter}</p>
+                    <div className="flex items-center gap-2">
+                      <p className="text-sm font-medium text-slate-200">{inv.matter}</p>
+                      <StatusBadge status={inv.status} />
+                    </div>
                     <p className="text-xs text-slate-400">
                       {inv.caseNumber} • {inv.contact}
                     </p>
@@ -514,26 +582,29 @@ setInvoices((prev) =>
                         ${total.toFixed(2)}
                       </span>
                     </p>
-                    <p className="text-xs text-slate-500">
-                      {inv.due}
-                    </p>
+                    <p className="text-xs text-slate-500">{inv.due}</p>
                   </div>
+
                   <div className="flex items-center gap-2">
+                    {/* Status dropdown: Sent is NOT manually selectable */}
                     <select
                       className="rounded-md border border-slate-700 bg-slate-900 text-slate-200 px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
                       value={inv.status}
                       onChange={(e) =>
-                        handleStatusChange(
-                          inv.id,
-                          e.target.value as InvoiceStatus
-                        )
+                        handleStatusChange(inv.id, e.target.value as InvoiceStatus)
+                      }
+                      disabled={inv.status === "Sent"}
+                      title={
+                        inv.status === "Sent"
+                          ? "Sent invoices cannot be manually changed."
+                          : undefined
                       }
                     >
                       <option value="Draft">Draft</option>
-                      <option value="For county report">
-                        For county report
-                      </option>
+                      <option value="For county report">For county report</option>
+                      {/* Sent is intentionally not an option */}
                     </select>
+
                     <button
                       type="button"
                       className="rounded-md border border-slate-700 bg-slate-800 px-3 py-1 text-xs font-medium text-slate-200 hover:bg-slate-700 transition-colors"
@@ -547,10 +618,9 @@ setInvoices((prev) =>
                     >
                       {inv.status === "Draft" && "Prepare & send"}
                       {inv.status === "Sent" && "View invoice"}
-                      {inv.status === "For county report" &&
-                        "View for report"}
+                      {inv.status === "For county report" && "View for report"}
                     </button>
-                    {/* 🗑 Delete button */}
+
                     <button
                       type="button"
                       className="rounded-md border border-slate-700 bg-transparent px-3 py-1 text-xs font-medium text-red-400 hover:bg-red-900/20 hover:border-red-800 transition-colors"
@@ -575,8 +645,8 @@ setInvoices((prev) =>
                 County month-end report preview
               </h2>
               <p className="text-xs text-slate-400">
-                {countyTotals.cases} cases • {countyTotals.hours.toFixed(2)}{" "}
-                hours • ${countyTotals.amount.toFixed(2)}
+                {countyTotals.cases} cases • {countyTotals.hours.toFixed(2)} hours • $
+                {countyTotals.amount.toFixed(2)}
               </p>
             </div>
             <div className="flex gap-2">
@@ -611,16 +681,15 @@ setInvoices((prev) =>
               </thead>
               <tbody>
                 {countyInvoices.map((inv) => (
-                  <tr key={inv.id} className="border-b border-slate-800 last:border-0 hover:bg-slate-800/30">
+                  <tr
+                    key={inv.id}
+                    className="border-b border-slate-800 last:border-0 hover:bg-slate-800/30"
+                  >
                     <td className="px-2 py-1">{inv.caseNumber}</td>
                     <td className="px-2 py-1">{inv.matter}</td>
                     <td className="px-2 py-1">{inv.contact}</td>
-                    <td className="px-2 py-1">
-                      {inv.hours.toFixed(2)}
-                    </td>
-                    <td className="px-2 py-1">
-                      ${inv.rate.toFixed(2)}
-                    </td>
+                    <td className="px-2 py-1">{inv.hours.toFixed(2)}</td>
+                    <td className="px-2 py-1">${inv.rate.toFixed(2)}</td>
                     <td className="px-2 py-1">
                       ${(inv.hours * inv.rate).toFixed(2)}
                     </td>
