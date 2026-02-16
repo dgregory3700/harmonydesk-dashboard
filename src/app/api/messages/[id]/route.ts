@@ -73,7 +73,6 @@ export async function DELETE(_req: NextRequest, context: IdContext) {
     const { supabase, userEmail } = auth;
     const { id } = await context.params;
 
-    // Avoid "false success": select the deleted row
     const { data, error } = await supabase
       .from("messages")
       .delete()
