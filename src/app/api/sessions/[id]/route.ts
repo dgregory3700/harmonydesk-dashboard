@@ -25,10 +25,7 @@ function mapRowToSession(row: any): MediationSession {
   };
 }
 
-export async function GET(
-  _req: NextRequest,
-  context: IdContext
-) {
+export async function GET(_req: NextRequest, context: IdContext) {
   try {
     const auth = await requireAuthedSupabase();
     if (!auth.ok) return auth.res;
@@ -54,10 +51,7 @@ export async function GET(
   }
 }
 
-export async function PATCH(
-  req: NextRequest,
-  context: IdContext
-) {
+export async function PATCH(req: NextRequest, context: IdContext) {
   try {
     const auth = await requireAuthedSupabase();
     if (!auth.ok) return auth.res;
@@ -91,6 +85,23 @@ export async function PATCH(
       return NextResponse.json({ error: "Nothing to update" }, { status: 400 });
     }
 
+    // First ensure the session exists for this user (clean 404 semantics)
+    const { data: existing, error: existingErr } = await supabase
+      .from("sessions")
+      .select("id")
+      .eq("id", id)
+      .eq("user_email", userEmail)
+      .maybeSingle();
+
+    if (existingErr) {
+      console.error("Supabase PATCH precheck error:", existingErr);
+      return NextResponse.json({ error: "Server error" }, { status: 500 });
+    }
+
+    if (!existing) {
+      return NextResponse.json({ error: "Session not found" }, { status: 404 });
+    }
+
     const { data, error } = await supabase
       .from("sessions")
       .update(update)
@@ -114,10 +125,7 @@ export async function PATCH(
   }
 }
 
-export async function DELETE(
-  _req: NextRequest,
-  context: IdContext
-) {
+export async function DELETE(_req: NextRequest, context: IdContext) {
   try {
     const auth = await requireAuthedSupabase();
     if (!auth.ok) return auth.res;
@@ -125,11 +133,12 @@ export async function DELETE(
     const { supabase, userEmail } = auth;
     const { id } = await context.params;
 
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from("sessions")
       .delete()
       .eq("id", id)
-      .eq("user_email", userEmail);
+      .eq("user_email", userEmail)
+      .select("id");
 
     if (error) {
       console.error("Supabase DELETE session error:", error);
@@ -137,6 +146,10 @@ export async function DELETE(
         { error: "Failed to delete session" },
         { status: 500 }
       );
+    }
+
+    if (!data || data.length === 0) {
+      return NextResponse.json({ error: "Session not found" }, { status: 404 });
     }
 
     return NextResponse.json({ success: true }, { status: 200 });
