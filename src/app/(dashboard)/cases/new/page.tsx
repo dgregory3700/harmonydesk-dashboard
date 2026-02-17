@@ -25,7 +25,6 @@ export default function NewCasePage() {
   const [parties, setParties] = useState("");
   const [county, setCounty] = useState("");
   const [status, setStatus] = useState<CaseStatus>("Open");
-  const [nextSessionDate, setNextSessionDate] = useState("");
   const [notes, setNotes] = useState("");
 
   const [submitting, setSubmitting] = useState(false);
@@ -60,7 +59,6 @@ export default function NewCasePage() {
           parties: parties.trim(),
           county: county.trim(),
           status,
-          nextSessionDate: nextSessionDate.trim() || null,
           notes: notes.trim() || null,
         }),
       });
@@ -96,8 +94,8 @@ export default function NewCasePage() {
             New case
           </h1>
           <p className="text-sm text-slate-400">
-            Create a new mediation file with case details and first session
-            info.
+            Create a new mediation file. Add sessions from the case file after
+            creation.
           </p>
         </div>
       </div>
@@ -180,12 +178,10 @@ export default function NewCasePage() {
           </div>
         </div>
 
-        {/* Right: status & first session */}
+        {/* Right: status + submit */}
         <div className="space-y-4">
           <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-4 shadow-sm space-y-3">
-            <h2 className="text-sm font-medium text-slate-200">
-              Status & schedule
-            </h2>
+            <h2 className="text-sm font-medium text-slate-200">Status</h2>
 
             <div className="space-y-1">
               <label className="block text-xs font-medium text-slate-400">
@@ -201,18 +197,6 @@ export default function NewCasePage() {
                 <option value="Closed">Closed</option>
               </select>
             </div>
-
-            <div className="space-y-1">
-              <label className="block text-xs font-medium text-slate-400">
-                Next session date
-              </label>
-              <input
-                type="date"
-                value={nextSessionDate}
-                onChange={(e) => setNextSessionDate(e.target.value)}
-                className="w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-200 [color-scheme:dark] focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
-              />
-            </div>
           </div>
 
           <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-4 shadow-sm space-y-3">
@@ -227,8 +211,8 @@ export default function NewCasePage() {
             {error && <p className="text-xs text-red-400">{error}</p>}
 
             <p className="text-[11px] text-slate-500">
-              After creating the case, you&apos;ll be taken straight to its case
-              file, where you can add sessions and generate invoices.
+              After creating the case, you’ll be taken to its case file where you
+              can add sessions and generate invoices.
             </p>
           </div>
         </div>
