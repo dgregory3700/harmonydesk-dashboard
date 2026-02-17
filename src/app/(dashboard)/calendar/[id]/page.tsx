@@ -235,7 +235,7 @@ export default function SessionDetailPage() {
           </div>
           <div className="flex flex-wrap items-center gap-2 text-xs">
             <span
-              className={`inline-flex items-center rounded-full px-2 py-0.5 font-medium border ${
+              className={`inline-flex items-center rounded-full px-3 py-1 text-sm font-medium border ${
                 session.completed
                   ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-400"
                   : "border-sky-500/20 bg-sky-500/10 text-sky-400"
