@@ -1,7 +1,6 @@
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
-import { jsPDF } from "jspdf";
 
 type InvoiceStatus = "Draft" | "Sent" | "For county report";
 
@@ -14,6 +13,17 @@ type Invoice = {
   rate: number;
   status: InvoiceStatus;
   due: string;
+  countyId: string | null;
+};
+
+type County = {
+  id: string;
+  name: string;
+  reportFormat: "csv" | "pdf";
+};
+
+type UserSettings = {
+  defaultCountyId: string | null;
 };
 
 type NewInvoiceForm = {
@@ -31,6 +41,9 @@ type BannerState =
 
 export default function BillingOverview() {
   const [invoices, setInvoices] = useState<Invoice[]>([]);
+  const [counties, setCounties] = useState<County[]>([]);
+  const [defaultCountyId, setDefaultCountyId] = useState<string | null>(null);
+
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -43,33 +56,66 @@ export default function BillingOverview() {
     rate: "",
   });
 
-  // Prominent success/failure feedback for sending
   const [banner, setBanner] = useState<BannerState>(null);
 
-  // Load invoices from API (Supabase-backed)
+  const [reportCountyId, setReportCountyId] = useState<string | null>(null);
+  const [exporting, setExporting] = useState(false);
+
+  const countiesById = useMemo(() => {
+    const map = new Map<string, County>();
+    for (const c of counties) map.set(c.id, c);
+    return map;
+  }, [counties]);
+
   useEffect(() => {
-    async function loadInvoices() {
+    async function loadAll() {
       try {
         setLoading(true);
         setError(null);
-        const res = await fetch("/api/invoices", { method: "GET" });
-        if (!res.ok) {
-          const body = await res.json().catch(() => ({}));
+
+        const [invRes, countyRes, settingsRes] = await Promise.all([
+          fetch("/api/invoices", { method: "GET" }),
+          fetch("/api/counties", { method: "GET" }),
+          fetch("/api/user-settings", { method: "GET" }),
+        ]);
+
+        if (!invRes.ok) {
+          const body = await invRes.json().catch(() => ({}));
           throw new Error(body.error || "Failed to load invoices");
         }
-        const data = (await res.json()) as Invoice[];
-        setInvoices(data);
+        if (!countyRes.ok) {
+          const body = await countyRes.json().catch(() => ({}));
+          throw new Error(body.error || "Failed to load counties");
+        }
+        if (!settingsRes.ok) {
+          const body = await settingsRes.json().catch(() => ({}));
+          throw new Error(body.error || "Failed to load settings");
+        }
+
+        const invData = (await invRes.json()) as Invoice[];
+        const countyData = (await countyRes.json()) as County[];
+        const settings = (await settingsRes.json()) as UserSettings;
+
+        setInvoices(invData);
+        setCounties(countyData);
+        setDefaultCountyId(settings.defaultCountyId ?? null);
+
+        // initialize report selector deterministically
+        const initialCounty =
+          settings.defaultCountyId ??
+          (countyData.length > 0 ? countyData[0].id : null);
+        setReportCountyId(initialCounty);
       } catch (err: any) {
         console.error(err);
-        setError(err.message || "Failed to load invoices");
+        setError(err.message || "Failed to load billing data");
       } finally {
         setLoading(false);
       }
     }
-    loadInvoices();
+
+    loadAll();
   }, []);
 
-  // Derived values
   const draftTotal = useMemo(
     () =>
       invoices
@@ -78,19 +124,23 @@ export default function BillingOverview() {
     [invoices]
   );
 
-  const countyInvoices = useMemo(
-    () => invoices.filter((inv) => inv.status === "For county report"),
-    [invoices]
-  );
+  const sentForSelectedCounty = useMemo(() => {
+    if (!reportCountyId) return [];
+    return invoices.filter(
+      (inv) => inv.status === "Sent" && inv.countyId === reportCountyId
+    );
+  }, [invoices, reportCountyId]);
 
-  const countyTotals = useMemo(
-    () => ({
-      cases: countyInvoices.length,
-      hours: countyInvoices.reduce((sum, inv) => sum + inv.hours, 0),
-      amount: countyInvoices.reduce((sum, inv) => sum + inv.hours * inv.rate, 0),
-    }),
-    [countyInvoices]
-  );
+  const reportTotals = useMemo(() => {
+    return {
+      count: sentForSelectedCounty.length,
+      hours: sentForSelectedCounty.reduce((sum, inv) => sum + inv.hours, 0),
+      amount: sentForSelectedCounty.reduce(
+        (sum, inv) => sum + inv.hours * inv.rate,
+        0
+      ),
+    };
+  }, [sentForSelectedCounty]);
 
   function handleFormChange(field: keyof NewInvoiceForm, value: string) {
     setNewInvoice((prev) => ({ ...prev, [field]: value }));
@@ -123,7 +173,23 @@ export default function BillingOverview() {
       }
 
       const created = (await res.json()) as Invoice;
-      setInvoices((prev) => [created, ...prev]);
+
+      // If user has a default county, apply it immediately (deterministic convenience)
+      if (defaultCountyId) {
+        const patch = await fetch(`/api/invoices/${created.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ countyId: defaultCountyId }),
+        });
+        if (patch.ok) {
+          const updated = (await patch.json()) as Invoice;
+          setInvoices((prev) => [updated, ...prev]);
+        } else {
+          setInvoices((prev) => [created, ...prev]);
+        }
+      } else {
+        setInvoices((prev) => [created, ...prev]);
+      }
 
       setNewInvoice({
         caseNumber: "",
@@ -152,9 +218,7 @@ export default function BillingOverview() {
         throw new Error(data.error || "Failed to update invoice");
       }
 
-      const json = await res.json();
-      const updated = (json?.invoice ?? json) as Invoice;
-
+      const updated = (await res.json()) as Invoice;
       setInvoices((prev) => prev.map((inv) => (inv.id === id ? updated : inv)));
     } catch (err: any) {
       console.error(err);
@@ -162,7 +226,29 @@ export default function BillingOverview() {
     }
   }
 
-  // 🗑 delete invoice
+  async function handleCountyChange(invoiceId: string, countyId: string | null) {
+    try {
+      const res = await fetch(`/api/invoices/${invoiceId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ countyId }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || "Failed to update invoice county");
+      }
+
+      const updated = (await res.json()) as Invoice;
+      setInvoices((prev) =>
+        prev.map((inv) => (inv.id === invoiceId ? updated : inv))
+      );
+    } catch (err: any) {
+      console.error(err);
+      alert(err.message || "Could not update invoice county");
+    }
+  }
+
   async function handleDeleteInvoice(id: string) {
     const confirmed = window.confirm(
       "Delete this invoice? This action cannot be undone."
@@ -186,10 +272,15 @@ export default function BillingOverview() {
 
   function describeInvoice(inv: Invoice) {
     const total = inv.hours * inv.rate;
+    const countyName = inv.countyId
+      ? countiesById.get(inv.countyId)?.name || "Unknown county"
+      : "Unassigned";
+
     return [
       `Case: ${inv.caseNumber}`,
       `Matter: ${inv.matter}`,
       `Bill to: ${inv.contact}`,
+      `County: ${countyName}`,
       `Hours: ${inv.hours.toFixed(2)}`,
       `Rate: $${inv.rate.toFixed(2)}`,
       `Total: $${total.toFixed(2)}`,
@@ -198,15 +289,14 @@ export default function BillingOverview() {
 
   function extractErrorMessage(body: any): string {
     if (!body) return "Failed to send invoice.";
-    // Prefer server-provided human message (Resend error) over error codes
-    if (typeof body.message === "string" && body.message.trim()) return body.message.trim();
-    if (typeof body.error === "string" && body.error.trim()) return body.error.trim();
+    if (typeof body.message === "string" && body.message.trim())
+      return body.message.trim();
+    if (typeof body.error === "string" && body.error.trim())
+      return body.error.trim();
     return "Failed to send invoice.";
   }
 
-  // ✅ prepare & send with double-check
   async function handlePrepareAndSend(inv: Invoice) {
-    // Clear old banners so mediators don't misread stale success
     setBanner(null);
 
     const ok = window.confirm(
@@ -240,7 +330,7 @@ export default function BillingOverview() {
           invoiceId: inv.id,
           text: `Send failed: ${msg}`,
         });
-        return; // do NOT pretend success
+        return;
       }
 
       const updatedInvoice = (bodyJson?.invoice ?? bodyJson) as Invoice;
@@ -259,122 +349,51 @@ export default function BillingOverview() {
       setBanner({
         kind: "error",
         invoiceId: inv.id,
-        text:
-          err?.message
-            ? `Send failed: ${String(err.message)}`
-            : "Send failed: Unknown error.",
+        text: err?.message ? `Send failed: ${String(err.message)}` : "Send failed.",
       });
     }
   }
 
-  // Simple preview for Sent / county-report invoices
-  function handleViewInvoice(inv: Invoice) {
-    alert(
-      [
-        "Invoice details (preview):",
-        "",
-        describeInvoice(inv),
-        "",
-        "In a future version this will open a full printable invoice.",
-      ].join("\n")
-    );
-  }
+  // Deterministic export (server-side filtering happens in your export endpoint)
+  async function exportCountyReport(countyId: string) {
+    const county = countiesById.get(countyId);
+    if (!county) return;
 
-  function downloadKingCountyCsv() {
-    if (countyInvoices.length === 0) return;
+    try {
+      setExporting(true);
 
-    const header = ["Case Number", "Matter", "Bill To", "Hours", "Rate", "Total"];
-    const rows = countyInvoices.map((inv) => [
-      inv.caseNumber,
-      inv.matter,
-      inv.contact,
-      inv.hours.toString(),
-      inv.rate.toFixed(2),
-      (inv.hours * inv.rate).toFixed(2),
-    ]);
+      const format = county.reportFormat; // "csv" | "pdf"
+      const res = await fetch(
+        `/api/counties/${encodeURIComponent(countyId)}/export?format=${format}`,
+        { method: "GET" }
+      );
 
-    const csv = [header, ...rows]
-      .map((row) =>
-        row
-          .map((cell) => `"${String(cell).replace(/"/g, '""')}"`)
-          .join(",")
-      )
-      .join("\n");
-
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = "king-county-report.csv";
-    link.click();
-    URL.revokeObjectURL(url);
-  }
-
-  function downloadPierceCountyPdf() {
-    if (countyInvoices.length === 0) return;
-
-    const doc = new jsPDF("landscape", "mm", "letter");
-    const marginLeft = 10;
-    let cursorY = 20;
-
-    doc.setFontSize(14);
-    doc.text("Pierce County District Court - Month End Report", marginLeft, cursorY);
-
-    cursorY += 8;
-    doc.setFontSize(11);
-    doc.text(
-      `Total cases: ${countyTotals.cases}    Total hours: ${countyTotals.hours.toFixed(
-        2
-      )}    Total amount: $${countyTotals.amount.toFixed(2)}`,
-      marginLeft,
-      cursorY
-    );
-
-    cursorY += 10;
-
-    // Table headers
-    doc.setFontSize(10);
-    doc.text("Case #", marginLeft, cursorY);
-    doc.text("Matter", marginLeft + 40, cursorY);
-    doc.text("Hours", marginLeft + 120, cursorY);
-    doc.text("Total ($)", marginLeft + 150, cursorY);
-    doc.text("Bill To", marginLeft + 190, cursorY);
-
-    cursorY += 6;
-
-    const maxY = 190;
-
-    countyInvoices.forEach((inv) => {
-      if (cursorY > maxY) {
-        doc.addPage("letter", "landscape");
-        cursorY = 20;
-
-        doc.setFontSize(10);
-        doc.text("Case #", marginLeft, cursorY);
-        doc.text("Matter", marginLeft + 40, cursorY);
-        doc.text("Hours", marginLeft + 120, cursorY);
-        doc.text("Total ($)", marginLeft + 150, cursorY);
-        doc.text("Bill To", marginLeft + 190, cursorY);
-
-        cursorY += 6;
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error || "Failed to export report");
       }
 
-      const total = inv.hours * inv.rate;
-      const matterTrunc =
-        inv.matter.length > 40 ? inv.matter.slice(0, 37) + "..." : inv.matter;
-      const contactTrunc =
-        inv.contact.length > 30 ? inv.contact.slice(0, 27) + "..." : inv.contact;
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
 
-      doc.text(inv.caseNumber, marginLeft, cursorY);
-      doc.text(matterTrunc, marginLeft + 40, cursorY);
-      doc.text(inv.hours.toFixed(2), marginLeft + 120, cursorY);
-      doc.text(total.toFixed(2), marginLeft + 150, cursorY);
-      doc.text(contactTrunc, marginLeft + 190, cursorY);
+      const ext = format === "pdf" ? "pdf" : "csv";
+      const safeName = county.name
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/(^-|-$)/g, "");
 
-      cursorY += 6;
-    });
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${safeName}-month-end-report.${ext}`;
+      a.click();
 
-    doc.save("pierce-county-report.pdf");
+      URL.revokeObjectURL(url);
+    } catch (err: any) {
+      console.error(err);
+      alert(err.message || "Export failed");
+    } finally {
+      setExporting(false);
+    }
   }
 
   function StatusBadge({ status }: { status: InvoiceStatus }) {
@@ -401,14 +420,13 @@ export default function BillingOverview() {
 
   return (
     <div className="space-y-6">
-      {/* Header + Draft total */}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight text-slate-100">
             Client billing
           </h1>
           <p className="text-sm text-slate-400">
-            Track mediation sessions, invoices, and county reports.
+            Track invoices and generate county reports from Sent invoices.
           </p>
         </div>
         <div className="text-right">
@@ -419,7 +437,6 @@ export default function BillingOverview() {
         </div>
       </div>
 
-      {/* Prominent send status banner (truthful) */}
       {banner && (
         <div
           className={[
@@ -442,7 +459,9 @@ export default function BillingOverview() {
               <p
                 className={[
                   "mt-1 text-sm",
-                  banner.kind === "success" ? "text-emerald-100/90" : "text-red-100/90",
+                  banner.kind === "success"
+                    ? "text-emerald-100/90"
+                    : "text-red-100/90",
                 ].join(" ")}
               >
                 {banner.text}
@@ -459,10 +478,10 @@ export default function BillingOverview() {
         </div>
       )}
 
-      {loading && <p className="text-sm text-slate-500">Loading invoices…</p>}
+      {loading && <p className="text-sm text-slate-500">Loading…</p>}
       {error && <p className="text-sm text-red-400">{error}</p>}
 
-      {/* New invoice card */}
+      {/* New invoice */}
       <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-4 shadow-sm">
         <div className="flex items-center justify-between">
           <h2 className="text-sm font-medium text-slate-200">New invoice</h2>
@@ -476,7 +495,10 @@ export default function BillingOverview() {
         </div>
 
         {formOpen && (
-          <form onSubmit={handleAddInvoice} className="mt-4 grid gap-3 md:grid-cols-5">
+          <form
+            onSubmit={handleAddInvoice}
+            className="mt-4 grid gap-3 md:grid-cols-5"
+          >
             <div className="md:col-span-1">
               <label className="mb-1 block text-xs font-medium text-slate-400">
                 Case number
@@ -488,6 +510,7 @@ export default function BillingOverview() {
                 required
               />
             </div>
+
             <div className="md:col-span-2">
               <label className="mb-1 block text-xs font-medium text-slate-400">
                 Matter
@@ -499,6 +522,7 @@ export default function BillingOverview() {
                 required
               />
             </div>
+
             <div className="md:col-span-2">
               <label className="mb-1 block text-xs font-medium text-slate-400">
                 Bill to / contact
@@ -510,6 +534,7 @@ export default function BillingOverview() {
                 required
               />
             </div>
+
             <div>
               <label className="mb-1 block text-xs font-medium text-slate-400">
                 Hours
@@ -524,6 +549,7 @@ export default function BillingOverview() {
                 required
               />
             </div>
+
             <div>
               <label className="mb-1 block text-xs font-medium text-slate-400">
                 Rate ($/hr)
@@ -538,6 +564,7 @@ export default function BillingOverview() {
                 required
               />
             </div>
+
             <div className="md:col-span-3 flex items-end">
               <button
                 type="submit"
@@ -562,6 +589,9 @@ export default function BillingOverview() {
           <div className="space-y-3">
             {invoices.map((inv) => {
               const total = inv.hours * inv.rate;
+              const countyName = inv.countyId
+                ? countiesById.get(inv.countyId)?.name || "Unknown county"
+                : "Unassigned";
 
               return (
                 <div
@@ -570,22 +600,51 @@ export default function BillingOverview() {
                 >
                   <div>
                     <div className="flex items-center gap-2">
-                      <p className="text-sm font-medium text-slate-200">{inv.matter}</p>
+                      <p className="text-sm font-medium text-slate-200">
+                        {inv.matter}
+                      </p>
                       <StatusBadge status={inv.status} />
                     </div>
+
                     <p className="text-xs text-slate-400">
                       {inv.caseNumber} • {inv.contact}
                     </p>
+
+                    <p className="text-xs text-slate-400">
+                      County:{" "}
+                      <span className="font-medium text-slate-200">
+                        {countyName}
+                      </span>
+                    </p>
+
                     <p className="text-xs text-slate-400">
                       {inv.hours.toFixed(2)} hours @ ${inv.rate.toFixed(2)} •{" "}
                       <span className="font-medium text-slate-200">
                         ${total.toFixed(2)}
                       </span>
                     </p>
+
                     <p className="text-xs text-slate-500">{inv.due}</p>
                   </div>
 
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
+                    {/* County assignment */}
+                    <select
+                      className="rounded-md border border-slate-700 bg-slate-900 text-slate-200 px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
+                      value={inv.countyId ?? ""}
+                      onChange={(e) =>
+                        handleCountyChange(inv.id, e.target.value || null)
+                      }
+                      title="Assign this invoice to a county"
+                    >
+                      <option value="">Unassigned</option>
+                      {counties.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.name}
+                        </option>
+                      ))}
+                    </select>
+
                     {/* Status dropdown: Sent is NOT manually selectable */}
                     <select
                       className="rounded-md border border-slate-700 bg-slate-900 text-slate-200 px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
@@ -602,7 +661,6 @@ export default function BillingOverview() {
                     >
                       <option value="Draft">Draft</option>
                       <option value="For county report">For county report</option>
-                      {/* Sent is intentionally not an option */}
                     </select>
 
                     <button
@@ -612,13 +670,13 @@ export default function BillingOverview() {
                         if (inv.status === "Draft") {
                           handlePrepareAndSend(inv);
                         } else {
-                          handleViewInvoice(inv);
+                          alert(describeInvoice(inv));
                         }
                       }}
                     >
                       {inv.status === "Draft" && "Prepare & send"}
                       {inv.status === "Sent" && "View invoice"}
-                      {inv.status === "For county report" && "View for report"}
+                      {inv.status === "For county report" && "View"}
                     </button>
 
                     <button
@@ -636,70 +694,69 @@ export default function BillingOverview() {
         )}
       </div>
 
-      {/* County month-end report */}
-      {countyInvoices.length > 0 && (
-        <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-4 shadow-sm">
-          <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-            <div>
-              <h2 className="text-sm font-medium text-slate-200">
-                County month-end report preview
-              </h2>
-              <p className="text-xs text-slate-400">
-                {countyTotals.cases} cases • {countyTotals.hours.toFixed(2)} hours • $
-                {countyTotals.amount.toFixed(2)}
-              </p>
-            </div>
-            <div className="flex gap-2">
-              <button
-                type="button"
-                className="rounded-md border border-slate-700 bg-slate-800 px-3 py-1 text-xs font-medium text-slate-200 hover:bg-slate-700 transition-colors"
-                onClick={downloadKingCountyCsv}
-              >
-                King County CSV
-              </button>
-              <button
-                type="button"
-                className="rounded-md border border-slate-700 bg-slate-800 px-3 py-1 text-xs font-medium text-slate-200 hover:bg-slate-700 transition-colors"
-                onClick={downloadPierceCountyPdf}
-              >
-                Pierce County PDF
-              </button>
-            </div>
+      {/* County month-end report (deterministic) */}
+      <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-4 shadow-sm">
+        <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+          <div>
+            <h2 className="text-sm font-medium text-slate-200">
+              County month-end report
+            </h2>
+            <p className="text-xs text-slate-400">
+              Export is based on: invoices where county_id = selected AND status = Sent.
+            </p>
           </div>
 
-          <div className="mt-4 overflow-x-auto">
-            <table className="min-w-full text-left text-xs text-slate-300">
-              <thead>
-                <tr className="border-b border-slate-800 bg-slate-800/50 text-slate-200">
-                  <th className="px-2 py-1 font-medium">Case #</th>
-                  <th className="px-2 py-1 font-medium">Matter</th>
-                  <th className="px-2 py-1 font-medium">Bill to</th>
-                  <th className="px-2 py-1 font-medium">Hours</th>
-                  <th className="px-2 py-1 font-medium">Rate</th>
-                  <th className="px-2 py-1 font-medium">Total</th>
-                </tr>
-              </thead>
-              <tbody>
-                {countyInvoices.map((inv) => (
-                  <tr
-                    key={inv.id}
-                    className="border-b border-slate-800 last:border-0 hover:bg-slate-800/30"
-                  >
-                    <td className="px-2 py-1">{inv.caseNumber}</td>
-                    <td className="px-2 py-1">{inv.matter}</td>
-                    <td className="px-2 py-1">{inv.contact}</td>
-                    <td className="px-2 py-1">{inv.hours.toFixed(2)}</td>
-                    <td className="px-2 py-1">${inv.rate.toFixed(2)}</td>
-                    <td className="px-2 py-1">
-                      ${(inv.hours * inv.rate).toFixed(2)}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <div className="flex flex-wrap gap-2 items-center">
+            <select
+              className="rounded-md border border-slate-700 bg-slate-900 text-slate-200 px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
+              value={reportCountyId ?? ""}
+              onChange={(e) => setReportCountyId(e.target.value || null)}
+              disabled={counties.length === 0}
+              title="Select county for export"
+            >
+              {counties.length === 0 ? (
+                <option value="">No counties configured</option>
+              ) : (
+                counties.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name} ({c.reportFormat.toUpperCase()})
+                  </option>
+                ))
+              )}
+            </select>
+
+            <button
+              type="button"
+              className="rounded-md border border-slate-700 bg-slate-800 px-3 py-2 text-xs font-medium text-slate-200 hover:bg-slate-700 transition-colors disabled:opacity-60"
+              disabled={
+                !reportCountyId ||
+                counties.length === 0 ||
+                exporting ||
+                sentForSelectedCounty.length === 0
+              }
+              onClick={() => reportCountyId && exportCountyReport(reportCountyId)}
+              title={
+                sentForSelectedCounty.length === 0
+                  ? "No Sent invoices for this county yet."
+                  : "Download report"
+              }
+            >
+              {exporting ? "Exporting…" : "Export"}
+            </button>
           </div>
         </div>
-      )}
+
+        <div className="mt-3 text-xs text-slate-400">
+          {reportCountyId ? (
+            <>
+              {reportTotals.count} sent invoices • {reportTotals.hours.toFixed(2)} hours • $
+              {reportTotals.amount.toFixed(2)}
+            </>
+          ) : (
+            <>Select a county to see totals.</>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
