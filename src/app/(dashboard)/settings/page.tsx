@@ -39,9 +39,8 @@ export default function SettingsPage() {
   const [phone, setPhone] = useState("");
   const [businessName, setBusinessName] = useState("");
   const [businessAddress, setBusinessAddress] = useState("");
-  const [defaultHourlyRate, setDefaultHourlyRate] = useState<string>("200");
-  const [defaultSessionDuration, setDefaultSessionDuration] =
-    useState<string>("1.0");
+  const [defaultHourlyRate, setDefaultHourlyRate] = useState<number | string>(200);
+  const [defaultSessionDuration, setDefaultSessionDuration] = useState<number | string>(1.0);
   const [timezone, setTimezone] = useState("America/Los_Angeles");
   const [darkMode, setDarkMode] = useState(false);
 
@@ -89,13 +88,13 @@ export default function SettingsPage() {
       setBusinessAddress(s.businessAddress ?? "");
       setDefaultHourlyRate(
         s.defaultHourlyRate !== null && s.defaultHourlyRate !== undefined
-          ? String(s.defaultHourlyRate)
-          : "200"
+          ? s.defaultHourlyRate
+          : 200
       );
       setDefaultSessionDuration(
         s.defaultSessionDuration !== null && s.defaultSessionDuration !== undefined
-          ? String(s.defaultSessionDuration)
-          : "1.0"
+          ? s.defaultSessionDuration
+          : 1.0
       );
       setTimezone(s.timezone ?? "America/Los_Angeles");
       setDarkMode(!!s.darkMode);
@@ -141,13 +140,20 @@ export default function SettingsPage() {
     setBanner(null);
 
     try {
+      const rateNum = defaultHourlyRate === "" ? null : Number(defaultHourlyRate);
+      const durNum = defaultSessionDuration === "" ? null : Number(defaultSessionDuration);
+
       const saved = await patchUserSettings({
         fullName: fullName.trim(),
         phone: phone.trim(),
         businessName: businessName.trim(),
         businessAddress: businessAddress.trim(),
-        defaultHourlyRate,
-        defaultSessionDuration,
+
+        defaultHourlyRate:
+          rateNum !== null && Number.isFinite(rateNum) ? rateNum : null,
+        defaultSessionDuration:
+          durNum !== null && Number.isFinite(durNum) ? durNum : null,
+
         timezone: timezone.trim(),
         darkMode,
       });
@@ -219,7 +225,7 @@ export default function SettingsPage() {
   async function handleDeleteCounty(countyId: string) {
     const county = countiesById.get(countyId);
     const ok = window.confirm(
-      `Delete county "${county?.name ?? "this county"}"?\n\nThis should only be done if you’re sure no invoices rely on it.`
+      `Delete county "${county?.name ?? "this county"}?\n\nThis should only be done if you’re sure no invoices rely on it.`
     );
     if (!ok) return;
 
@@ -452,7 +458,7 @@ export default function SettingsPage() {
                 {counties.length === 0 ? (
                   <option value="">No counties configured</option>
                 ) : (
-                  <>
+                  <> 
                     <option value="">None</option>
                     {counties.map((c) => (
                       <option key={c.id} value={c.id}>
