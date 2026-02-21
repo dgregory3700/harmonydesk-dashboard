@@ -12,6 +12,7 @@ type Invoice = {
   rate: number;
   status: InvoiceStatus;
   due: string;
+  countyId: string | null;
 };
 
 function mapRowToInvoice(row: any): Invoice {
@@ -24,6 +25,7 @@ function mapRowToInvoice(row: any): Invoice {
     rate: Number(row.rate ?? 0),
     status: row.status as InvoiceStatus,
     due: row.due ?? "",
+    countyId: row.county_id ?? null,
   };
 }
 
@@ -42,15 +44,10 @@ export async function GET(_req: NextRequest) {
 
     if (error) {
       console.error("Supabase GET /api/invoices error:", error);
-      return NextResponse.json(
-        { error: "Failed to load invoices" },
-        { status: 500 }
-      );
+      return NextResponse.json({ error: "Failed to load invoices" }, { status: 500 });
     }
 
-    // IMPORTANT: no seeding in production.
-    const invoices = (data ?? []).map(mapRowToInvoice);
-    return NextResponse.json(invoices);
+    return NextResponse.json((data ?? []).map(mapRowToInvoice));
   } catch (err) {
     console.error("Unexpected GET /api/invoices error:", err);
     return NextResponse.json({ error: "Server error" }, { status: 500 });
@@ -63,8 +60,7 @@ export async function POST(req: NextRequest) {
     if (!auth.ok) return auth.res;
 
     const { supabase, userEmail } = auth;
-
-    const body = await req.json();
+    const body = await req.json().catch(() => ({}));
 
     const caseNumber = String(body.caseNumber ?? "").trim();
     const matter = String(body.matter ?? "").trim();
@@ -73,15 +69,27 @@ export async function POST(req: NextRequest) {
     const rate = Number(body.rate ?? 0);
 
     if (!caseNumber || !matter || !contact) {
-      return NextResponse.json(
-        { error: "Missing required fields" },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
     }
 
-    // Keep behavior stable; if your UI relies on due, set a simple default.
     const due =
       typeof body.due === "string" && body.due.trim() ? body.due.trim() : "";
+
+    // countyId: explicit wins, else fallback to user_settings.default_county_id
+    let countyId: string | null =
+      typeof body.countyId === "string" && body.countyId.trim()
+        ? body.countyId.trim()
+        : null;
+
+    if (!countyId) {
+      const { data: settings } = await supabase
+        .from("user_settings")
+        .select("default_county_id")
+        .eq("user_email", userEmail)
+        .maybeSingle();
+
+      countyId = settings?.default_county_id ?? null;
+    }
 
     const { data, error } = await supabase
       .from("invoices")
@@ -94,16 +102,14 @@ export async function POST(req: NextRequest) {
         rate: Number.isFinite(rate) ? rate : 0,
         status: "Draft",
         due,
+        county_id: countyId,
       })
       .select("*")
       .single();
 
     if (error || !data) {
       console.error("Supabase POST /api/invoices error:", error);
-      return NextResponse.json(
-        { error: "Failed to create invoice" },
-        { status: 500 }
-      );
+      return NextResponse.json({ error: "Failed to create invoice" }, { status: 500 });
     }
 
     return NextResponse.json(mapRowToInvoice(data), { status: 201 });
