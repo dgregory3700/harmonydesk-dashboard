@@ -2,11 +2,24 @@
 
 import { useEffect, useMemo, useState } from "react";
 
+type CountyReportFormat =
+  | "csv_line_per_invoice"
+  | "pdf_line_per_invoice"
+  | "pdf_grouped_by_case";
+
 type County = {
   id: string;
   name: string;
-  reportFormat: "csv" | "pdf";
+  reportFormat: CountyReportFormat;
 };
+
+function formatLabel(f: CountyReportFormat): "CSV" | "PDF" {
+  return f === "csv_line_per_invoice" ? "CSV" : "PDF";
+}
+
+function fileExt(f: CountyReportFormat): "csv" | "pdf" {
+  return f === "csv_line_per_invoice" ? "csv" : "pdf";
+}
 
 export function CourtReportsPanel() {
   const [counties, setCounties] = useState<County[]>([]);
@@ -52,9 +65,10 @@ export function CourtReportsPanel() {
     try {
       setExportingId(countyId);
 
-      const format = county.reportFormat;
+      // Deterministic server truth: export format is derived from county.report_format.
+      // Do NOT pass ?format=... (avoids enum drift / regressions).
       const res = await fetch(
-        `/api/counties/${encodeURIComponent(countyId)}/export?format=${format}`,
+        `/api/counties/${encodeURIComponent(countyId)}/export`,
         { method: "GET" }
       );
 
@@ -66,7 +80,7 @@ export function CourtReportsPanel() {
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
 
-      const ext = format === "pdf" ? "pdf" : "csv";
+      const ext = fileExt(county.reportFormat);
       const safeName = county.name
         .toLowerCase()
         .replace(/[^a-z0-9]+/g, "-")
@@ -112,8 +126,10 @@ export function CourtReportsPanel() {
             className="rounded-xl border border-slate-800 bg-slate-950/50 px-3 py-2 text-xs"
           >
             <p className="font-medium text-slate-200">{c.name}</p>
+
             <p className="text-[11px] text-slate-500">
-              Format: {c.reportFormat.toUpperCase()}
+              Format: {formatLabel(c.reportFormat)}
+              {c.reportFormat === "pdf_grouped_by_case" ? " (grouped by case)" : ""}
             </p>
 
             <div className="mt-2 flex items-center justify-between">
