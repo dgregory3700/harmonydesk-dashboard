@@ -22,6 +22,23 @@ function mapRow(row: any): County {
   };
 }
 
+function normalizeReportFormat(raw: unknown): CountyReportFormat | "" {
+  const v = String(raw ?? "").trim().toLowerCase();
+
+  if (!v) return "";
+
+  // Legacy / short-hand values from older UI versions
+  if (v === "csv") return "csv_line_per_invoice";
+  if (v === "pdf") return "pdf_line_per_invoice";
+
+  // Canonical enum values (already correct)
+  if (v === "csv_line_per_invoice") return "csv_line_per_invoice";
+  if (v === "pdf_line_per_invoice") return "pdf_line_per_invoice";
+  if (v === "pdf_grouped_by_case") return "pdf_grouped_by_case";
+
+  return "";
+}
+
 export async function GET(_req: NextRequest) {
   try {
     const auth = await requireAuthedSupabase();
@@ -53,8 +70,14 @@ export async function POST(req: NextRequest) {
     const { supabase, userEmail } = auth;
 
     const body = await req.json().catch(() => ({}));
+
     const name = String(body.name ?? "").trim();
-    const reportFormat = String(body.reportFormat ?? "").trim() as CountyReportFormat;
+
+    // Accept BOTH camelCase and snake_case payloads
+    const reportFormat = normalizeReportFormat(
+      body.reportFormat ?? body.report_format
+    ) as CountyReportFormat;
+
     const nextDueRule =
       typeof body.nextDueRule === "string" && body.nextDueRule.trim()
         ? body.nextDueRule.trim()
@@ -69,6 +92,7 @@ export async function POST(req: NextRequest) {
     if (!name) {
       return NextResponse.json({ error: "Missing county name" }, { status: 400 });
     }
+
     if (!allowed.includes(reportFormat)) {
       return NextResponse.json({ error: "Invalid report format" }, { status: 400 });
     }
