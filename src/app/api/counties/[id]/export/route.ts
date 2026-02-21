@@ -18,6 +18,11 @@ type InvoiceRow = {
   created_at: string;
 };
 
+type CountyReportFormat =
+  | "csv_line_per_invoice"
+  | "pdf_line_per_invoice"
+  | "pdf_grouped_by_case";
+
 function n(v: any) {
   const x = Number(v ?? 0);
   return Number.isFinite(x) ? x : 0;
@@ -25,6 +30,29 @@ function n(v: any) {
 
 function csvEscape(cell: any) {
   return `"${String(cell ?? "").replace(/"/g, '""')}"`;
+}
+
+function normalizeLegacyFormat(v: string): "csv" | "pdf" | "" {
+  const s = String(v ?? "").trim().toLowerCase();
+  if (!s) return "";
+  if (s === "csv") return "csv";
+  if (s === "pdf") return "pdf";
+
+  // If someone passes canonical values via query param, interpret them too.
+  if (s === "csv_line_per_invoice") return "csv";
+  if (s === "pdf_line_per_invoice") return "pdf";
+  if (s === "pdf_grouped_by_case") return "pdf";
+
+  return "";
+}
+
+function exportKindFromCountyFormat(f: any): "csv" | "pdf" {
+  const s = String(f ?? "").trim().toLowerCase();
+  if (s === "csv_line_per_invoice") return "csv";
+  if (s === "pdf_line_per_invoice") return "pdf";
+  if (s === "pdf_grouped_by_case") return "pdf";
+  // Safe fallback: if DB contains unexpected value, default to CSV (non-breaking)
+  return "csv";
 }
 
 export async function GET(req: NextRequest, context: IdContext) {
@@ -36,7 +64,6 @@ export async function GET(req: NextRequest, context: IdContext) {
     const { id: countyId } = await context.params;
 
     const url = new URL(req.url);
-    const format = (url.searchParams.get("format") || "csv").toLowerCase();
     const preview = url.searchParams.get("preview") === "1";
 
     // Load county (scoped)
@@ -54,6 +81,12 @@ export async function GET(req: NextRequest, context: IdContext) {
     if (!county) {
       return NextResponse.json({ error: "County not found" }, { status: 404 });
     }
+
+    // Deterministic export format: derived from the county record.
+    // Optional legacy override: accept ?format=csv|pdf (or canonical strings) if provided.
+    const requested = normalizeLegacyFormat(url.searchParams.get("format") || "");
+    const kind: "csv" | "pdf" =
+      requested || exportKindFromCountyFormat(county.report_format as CountyReportFormat);
 
     // Pull only Sent invoices for this county
     const { data: invoices, error } = await supabase
@@ -86,6 +119,7 @@ export async function GET(req: NextRequest, context: IdContext) {
     if (preview) {
       return NextResponse.json({
         county: { id: county.id, name: county.name, reportFormat: county.report_format },
+        exportKind: kind, // "csv" | "pdf" (useful for UI)
         totals: {
           cases: totals.cases,
           hours: Math.round(totals.hours * 100) / 100,
@@ -104,7 +138,7 @@ export async function GET(req: NextRequest, context: IdContext) {
       });
     }
 
-    if (format === "csv") {
+    if (kind === "csv") {
       const header = ["Case Number", "Matter", "Bill To", "Hours", "Rate", "Total"];
       const csv = [
         header.map(csvEscape).join(","),
@@ -119,7 +153,9 @@ export async function GET(req: NextRequest, context: IdContext) {
             hours.toFixed(2),
             rate.toFixed(2),
             total.toFixed(2),
-          ].map(csvEscape).join(",");
+          ]
+            .map(csvEscape)
+            .join(",");
         }),
       ].join("\n");
 
@@ -132,8 +168,9 @@ export async function GET(req: NextRequest, context: IdContext) {
       });
     }
 
-    if (format === "pdf") {
-      // Simple deterministic PDF (line-per-invoice)
+    // kind === "pdf"
+    {
+      // Deterministic PDF (currently line-per-invoice for both pdf_* formats)
       const doc = new jsPDF("landscape", "mm", "letter");
       const marginLeft = 10;
       let cursorY = 20;
@@ -150,6 +187,15 @@ export async function GET(req: NextRequest, context: IdContext) {
         marginLeft,
         cursorY
       );
+
+      // If the county is configured as grouped-by-case, we can at least label it,
+      // even if the body is still line-per-invoice. (No redesign / safe behavior.)
+      const fmt = String(county.report_format ?? "").toLowerCase();
+      if (fmt === "pdf_grouped_by_case") {
+        cursorY += 6;
+        doc.setFontSize(10);
+        doc.text(`Format: PDF (grouped by case)`, marginLeft, cursorY);
+      }
 
       cursorY += 10;
 
@@ -207,8 +253,6 @@ export async function GET(req: NextRequest, context: IdContext) {
         },
       });
     }
-
-    return NextResponse.json({ error: "Unsupported export format" }, { status: 400 });
   } catch (err) {
     console.error("Unexpected county export error:", err);
     return NextResponse.json({ error: "Server error" }, { status: 500 });
