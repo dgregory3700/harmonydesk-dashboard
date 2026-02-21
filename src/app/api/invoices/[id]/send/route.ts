@@ -1,5 +1,3 @@
-// src/app/api/invoices/[id]/send/route.ts
-
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuthedSupabase } from "@/lib/authServer";
 import { resolve4, resolve6, resolveMx } from "dns/promises";
