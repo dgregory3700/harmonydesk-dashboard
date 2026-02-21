@@ -1,36 +1,109 @@
-// src/components/billing/CourtReportsPanel.tsx
+"use client";
 
-const counties = [
-  {
-    id: "king-wa",
-    name: "King County Superior Court",
-    format: "Summary by case (hours + outcome)",
-    nextDue: "End of month",
-  },
-  {
-    id: "pierce-wa",
-    name: "Pierce County District Court",
-    format: "One line per session",
-    nextDue: "15th of next month",
-  },
-  {
-    id: "snohomish-wa",
-    name: "Snohomish County Superior Court",
-    format: "Grouped by case with totals",
-    nextDue: "End of quarter",
-  },
-];
+import { useEffect, useMemo, useState } from "react";
+
+type County = {
+  id: string;
+  name: string;
+  reportFormat: "csv" | "pdf";
+};
 
 export function CourtReportsPanel() {
+  const [counties, setCounties] = useState<County[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [exportingId, setExportingId] = useState<string | null>(null);
+
+  const byId = useMemo(() => {
+    const m = new Map<string, County>();
+    counties.forEach((c) => m.set(c.id, c));
+    return m;
+  }, [counties]);
+
+  useEffect(() => {
+    async function load() {
+      try {
+        setLoading(true);
+        setError(null);
+
+        const res = await fetch("/api/counties", { method: "GET" });
+        if (!res.ok) {
+          const body = await res.json().catch(() => ({}));
+          throw new Error(body.error || "Failed to load counties");
+        }
+
+        const data = (await res.json()) as County[];
+        setCounties(data);
+      } catch (err: any) {
+        console.error(err);
+        setError(err.message || "Failed to load counties");
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    load();
+  }, []);
+
+  async function previewExport(countyId: string) {
+    const county = byId.get(countyId);
+    if (!county) return;
+
+    try {
+      setExportingId(countyId);
+
+      const format = county.reportFormat;
+      const res = await fetch(
+        `/api/counties/${encodeURIComponent(countyId)}/export?format=${format}`,
+        { method: "GET" }
+      );
+
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error || "Failed to generate preview");
+      }
+
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+
+      const ext = format === "pdf" ? "pdf" : "csv";
+      const safeName = county.name
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/(^-|-$)/g, "");
+
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${safeName}-preview.${ext}`;
+      a.click();
+
+      URL.revokeObjectURL(url);
+    } catch (err: any) {
+      console.error(err);
+      alert(err.message || "Preview failed");
+    } finally {
+      setExportingId(null);
+    }
+  }
+
   return (
     <div className="rounded-2xl border border-slate-800 bg-slate-900/50 p-4">
       <h2 className="text-sm font-semibold text-slate-200 mb-2">
         County court reporting
       </h2>
+
       <p className="text-[11px] text-slate-400 mb-3">
-        Different counties, different formats. HarmonyDesk will generate the
-        correct layout for each one from your case data.
+        Reports are generated deterministically from Sent invoices by county.
       </p>
+
+      {loading && <p className="text-xs text-slate-500">Loading counties…</p>}
+      {error && <p className="text-xs text-red-400">{error}</p>}
+
+      {!loading && !error && counties.length === 0 && (
+        <div className="rounded-xl border border-slate-800 bg-slate-950/50 px-3 py-3 text-xs text-slate-400">
+          No counties configured yet. Add counties in Settings.
+        </div>
+      )}
 
       <div className="space-y-2">
         {counties.map((c) => (
@@ -39,13 +112,22 @@ export function CourtReportsPanel() {
             className="rounded-xl border border-slate-800 bg-slate-950/50 px-3 py-2 text-xs"
           >
             <p className="font-medium text-slate-200">{c.name}</p>
-            <p className="text-[11px] text-slate-500">{c.format}</p>
-            <div className="mt-1 flex items-center justify-between">
+            <p className="text-[11px] text-slate-500">
+              Format: {c.reportFormat.toUpperCase()}
+            </p>
+
+            <div className="mt-2 flex items-center justify-between">
               <span className="text-[11px] text-slate-500">
-                Next report: {c.nextDue}
+                Export includes Sent invoices only.
               </span>
-              <button className="text-[11px] rounded-full border border-slate-700 px-2 py-0.5 text-sky-400 hover:bg-slate-900 hover:text-sky-300 transition-colors">
-                Preview
+
+              <button
+                type="button"
+                onClick={() => previewExport(c.id)}
+                disabled={exportingId === c.id}
+                className="text-[11px] rounded-full border border-slate-700 px-2 py-1 text-sky-400 hover:bg-slate-900 hover:text-sky-300 transition-colors disabled:opacity-60"
+              >
+                {exportingId === c.id ? "Generating…" : "Preview"}
               </button>
             </div>
           </div>
