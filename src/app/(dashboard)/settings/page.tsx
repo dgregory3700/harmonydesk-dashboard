@@ -1,570 +1,570 @@
 "use client";
 
-import { useEffect, useState, FormEvent } from "react";
-import { supabaseBrowser } from "@/lib/supabaseBrowser";
+import { useEffect, useMemo, useState } from "react";
+import { DashboardGreeting } from "@/components/dashboard/DashboardGreeting";
+
+type County = {
+  id: string;
+  name: string;
+  reportFormat: "csv" | "pdf";
+};
 
 type UserSettings = {
-  id: string | null;
-  userEmail: string;
   fullName: string | null;
   phone: string | null;
   businessName: string | null;
   businessAddress: string | null;
   defaultHourlyRate: number | null;
-  defaultCounty: string | null;
+  defaultCounty: string | null; // legacy
+  defaultCountyId: string | null; // new
   defaultSessionDuration: number | null;
   timezone: string | null;
   darkMode: boolean;
 };
 
-type BillingStatus = {
-  user_email: string;
-  status: string; // "trialing" | "active" | "inactive" | "none"
-  trial_end_at: string | null;
-  current_period_end_at: string | null;
-  enabled: boolean;
-};
-
-const TIMEZONE_OPTIONS = [
-  { value: "America/Los_Angeles", label: "Pacific – America/Los_Angeles" },
-  { value: "America/Denver", label: "Mountain – America/Denver" },
-  { value: "America/Chicago", label: "Central – America/Chicago" },
-  { value: "America/New_York", label: "Eastern – America/New_York" },
-  { value: "America/Anchorage", label: "Alaska – America/Anchorage" },
-  { value: "Pacific/Honolulu", label: "Hawaii – Pacific/Honolulu" },
-  { value: "UTC", label: "UTC" },
-];
-
-function formatDateTime(iso: string | null) {
-  if (!iso) return null;
-  try {
-    const d = new Date(iso);
-    return d.toLocaleString();
-  } catch {
-    return iso;
-  }
-}
+type Banner =
+  | { kind: "success"; text: string }
+  | { kind: "error"; text: string }
+  | null;
 
 export default function SettingsPage() {
-  const [settings, setSettings] = useState<UserSettings | null>(null);
   const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState<string | null>(null);
+  const [banner, setBanner] = useState<Banner>(null);
 
-  const [saving, setSaving] = useState(false);
-  const [saveError, setSaveError] = useState<string | null>(null);
-  const [saveSuccess, setSaveSuccess] = useState(false);
+  const [settings, setSettings] = useState<UserSettings | null>(null);
+  const [counties, setCounties] = useState<County[]>([]);
 
-  // Real identity (Supabase Auth)
-  const [sessionEmail, setSessionEmail] = useState<string | null>(null);
-  const [sessionChecking, setSessionChecking] = useState(true);
+  // General settings form state
+  const [fullName, setFullName] = useState("");
+  const [phone, setPhone] = useState("");
+  const [businessName, setBusinessName] = useState("");
+  const [businessAddress, setBusinessAddress] = useState("");
+  const [defaultHourlyRate, setDefaultHourlyRate] = useState<string>("200");
+  const [defaultSessionDuration, setDefaultSessionDuration] =
+    useState<string>("1.0");
+  const [timezone, setTimezone] = useState("America/Los_Angeles");
+  const [darkMode, setDarkMode] = useState(false);
 
-  // Plan & Subscription
-  const [billing, setBilling] = useState<BillingStatus | null>(null);
-  const [billingLoading, setBillingLoading] = useState(true);
-  const [billingError, setBillingError] = useState<string | null>(null);
-  const [portalLoading, setPortalLoading] = useState(false);
-  const [portalError, setPortalError] = useState<string | null>(null);
+  // County settings
+  const [defaultCountyId, setDefaultCountyId] = useState<string | null>(null);
 
-  // 1) Get authenticated email from Supabase session
-  useEffect(() => {
-    let mounted = true;
+  // Add county form
+  const [newCountyName, setNewCountyName] = useState("");
+  const [newCountyFormat, setNewCountyFormat] = useState<"csv" | "pdf">("csv");
 
-    async function loadSession() {
-      try {
-        setSessionChecking(true);
-        const { data } = await supabaseBrowser.auth.getSession();
-        const email = data.session?.user?.email ?? null;
-        if (!mounted) return;
+  const countiesById = useMemo(() => {
+    const m = new Map<string, County>();
+    for (const c of counties) m.set(c.id, c);
+    return m;
+  }, [counties]);
 
-        setSessionEmail(email);
-      } catch (err) {
-        console.error("Session load error:", err);
-        if (!mounted) return;
-        setSessionEmail(null);
-      } finally {
-        if (mounted) setSessionChecking(false);
-      }
-    }
-
-    loadSession();
-
-    const { data: sub } = supabaseBrowser.auth.onAuthStateChange(
-      (_event, session) => {
-        if (!mounted) return;
-        setSessionEmail(session?.user?.email ?? null);
-        setSessionChecking(false);
-      }
-    );
-
-    return () => {
-      mounted = false;
-      sub.subscription.unsubscribe();
-    };
-  }, []);
-
-  // 2) Load existing settings from your Next API (unchanged)
-  useEffect(() => {
-    async function fetchSettings() {
-      try {
-        setLoading(true);
-        setLoadError(null);
-
-        const res = await fetch("/api/user-settings");
-        if (!res.ok) throw new Error("Failed to load settings");
-
-        const data = (await res.json()) as UserSettings;
-        setSettings(data);
-      } catch (err: any) {
-        console.error("Error loading settings:", err);
-        setLoadError(err?.message ?? "Failed to load settings");
-      } finally {
-        setLoading(false);
-      }
-    }
-
-    fetchSettings();
-  }, []);
-
-  // 3) Load billing status using *sessionEmail* (source of truth)
-  useEffect(() => {
-    async function fetchBilling() {
-      if (!sessionEmail) {
-        setBilling(null);
-        setBillingLoading(false);
-        return;
-      }
-
-      try {
-        setBillingLoading(true);
-        setBillingError(null);
-
-        const baseUrl =
-          process.env.NEXT_PUBLIC_API_URL || "https://api.harmonydesk.ai";
-
-        const res = await fetch(
-          `${baseUrl}/api/billing/status?email=${encodeURIComponent(sessionEmail)}`,
-          { cache: "no-store" }
-        );
-
-        if (!res.ok) throw new Error("Failed to load plan status");
-        const data = (await res.json()) as BillingStatus;
-        setBilling(data);
-      } catch (err: any) {
-        console.error("Error loading billing status:", err);
-        setBillingError(err?.message ?? "Failed to load plan status");
-      } finally {
-        setBillingLoading(false);
-      }
-    }
-
-    fetchBilling();
-  }, [sessionEmail]);
-
-  async function handleSubmit(e: FormEvent) {
-    e.preventDefault();
-    if (!settings || saving) return;
+  async function loadAll() {
+    setLoading(true);
+    setBanner(null);
 
     try {
-      setSaving(true);
-      setSaveError(null);
-      setSaveSuccess(false);
+      const [settingsRes, countiesRes] = await Promise.all([
+        fetch("/api/user-settings", { method: "GET" }),
+        fetch("/api/counties", { method: "GET" }),
+      ]);
 
-      const res = await fetch("/api/user-settings", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          fullName: settings.fullName,
-          phone: settings.phone,
-          businessName: settings.businessName,
-          businessAddress: settings.businessAddress,
-          defaultHourlyRate: settings.defaultHourlyRate,
-          defaultCounty: settings.defaultCounty,
-          defaultSessionDuration: settings.defaultSessionDuration,
-          timezone: settings.timezone,
-          darkMode: true, // Force Dark Mode
-        }),
-      });
-
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        throw new Error(body?.error || "Failed to save settings");
+      if (!settingsRes.ok) {
+        const body = await settingsRes.json().catch(() => ({}));
+        throw new Error(body.error || "Failed to load settings");
+      }
+      if (!countiesRes.ok) {
+        const body = await countiesRes.json().catch(() => ({}));
+        throw new Error(body.error || "Failed to load counties");
       }
 
-      const updated = (await res.json()) as UserSettings;
-      setSettings(updated);
-      setSaveSuccess(true);
+      const s = (await settingsRes.json()) as UserSettings;
+      const c = (await countiesRes.json()) as County[];
+
+      setSettings(s);
+      setCounties(c);
+
+      setFullName(s.fullName ?? "");
+      setPhone(s.phone ?? "");
+      setBusinessName(s.businessName ?? "");
+      setBusinessAddress(s.businessAddress ?? "");
+      setDefaultHourlyRate(
+        s.defaultHourlyRate !== null && s.defaultHourlyRate !== undefined
+          ? String(s.defaultHourlyRate)
+          : "200"
+      );
+      setDefaultSessionDuration(
+        s.defaultSessionDuration !== null && s.defaultSessionDuration !== undefined
+          ? String(s.defaultSessionDuration)
+          : "1.0"
+      );
+      setTimezone(s.timezone ?? "America/Los_Angeles");
+      setDarkMode(!!s.darkMode);
+
+      // Default county: use the new uuid field
+      const initialDefaultCountyId =
+        s.defaultCountyId ?? (c.length > 0 ? c[0].id : null);
+      setDefaultCountyId(initialDefaultCountyId);
     } catch (err: any) {
-      console.error("Error saving settings:", err);
-      setSaveError(err?.message ?? "Failed to save settings");
+      console.error(err);
+      setBanner({
+        kind: "error",
+        text: err?.message ? String(err.message) : "Failed to load settings",
+      });
     } finally {
-      setSaving(false);
+      setLoading(false);
     }
   }
 
-  async function handleManageSubscription() {
-    if (!sessionEmail || portalLoading) return;
+  useEffect(() => {
+    loadAll();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  async function patchUserSettings(patch: Partial<UserSettings>) {
+    const res = await fetch("/api/user-settings", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(patch),
+    });
+
+    const body = await res.json().catch(() => ({}));
+
+    if (!res.ok) {
+      throw new Error(body.error || "Failed to save settings");
+    }
+
+    return body as UserSettings;
+  }
+
+  async function handleSaveGeneral(e: React.FormEvent) {
+    e.preventDefault();
+    setBanner(null);
 
     try {
-      setPortalLoading(true);
-      setPortalError(null);
+      const saved = await patchUserSettings({
+        fullName: fullName.trim(),
+        phone: phone.trim(),
+        businessName: businessName.trim(),
+        businessAddress: businessAddress.trim(),
+        defaultHourlyRate,
+        defaultSessionDuration,
+        timezone: timezone.trim(),
+        darkMode,
+      });
 
-      const baseUrl =
-        process.env.NEXT_PUBLIC_API_URL || "https://api.harmonydesk.ai";
+      setSettings(saved);
+      setBanner({ kind: "success", text: "Settings saved." });
+    } catch (err: any) {
+      console.error(err);
+      setBanner({
+        kind: "error",
+        text: err?.message ? String(err.message) : "Failed to save settings",
+      });
+    }
+  }
 
-      const res = await fetch(`${baseUrl}/api/stripe/portal`, {
+  async function handleSetDefaultCounty(countyId: string | null) {
+    setBanner(null);
+
+    try {
+      const saved = await patchUserSettings({
+        defaultCountyId: countyId,
+      });
+
+      setSettings(saved);
+      setDefaultCountyId(saved.defaultCountyId ?? null);
+      setBanner({ kind: "success", text: "Default county updated." });
+    } catch (err: any) {
+      console.error(err);
+      setBanner({
+        kind: "error",
+        text: err?.message ? String(err.message) : "Failed to update default county",
+      });
+    }
+  }
+
+  async function handleAddCounty(e: React.FormEvent) {
+    e.preventDefault();
+    setBanner(null);
+
+    const name = newCountyName.trim();
+    if (!name) return;
+
+    try {
+      const res = await fetch("/api/counties", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: sessionEmail }),
+        body: JSON.stringify({ name, reportFormat: newCountyFormat }),
       });
 
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        throw new Error(body?.error || "Failed to open customer portal");
-      }
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body.error || "Failed to add county");
 
-      const data = (await res.json()) as { url: string };
-      if (!data?.url) throw new Error("Portal URL missing");
+      // reload to ensure we have canonical list
+      await loadAll();
 
-      window.location.href = data.url;
+      setNewCountyName("");
+      setNewCountyFormat("csv");
+
+      setBanner({ kind: "success", text: "County added." });
     } catch (err: any) {
-      console.error("Portal error:", err);
-      setPortalError(err?.message ?? "Failed to open customer portal");
-    } finally {
-      setPortalLoading(false);
+      console.error(err);
+      setBanner({
+        kind: "error",
+        text: err?.message ? String(err.message) : "Failed to add county",
+      });
     }
   }
 
-  function update<K extends keyof UserSettings>(key: K, value: UserSettings[K]) {
-    setSettings((prev) => (prev ? { ...prev, [key]: value } : prev));
-  }
-
-  if (sessionChecking) {
-    return (
-      <div className="space-y-4">
-        <h1 className="text-2xl font-semibold tracking-tight text-slate-100">
-          Settings
-        </h1>
-        <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-6">
-          <p className="text-sm text-slate-400">Checking your session…</p>
-        </div>
-      </div>
+  async function handleDeleteCounty(countyId: string) {
+    const county = countiesById.get(countyId);
+    const ok = window.confirm(
+      `Delete county "${county?.name ?? "this county"}"?\n\nThis should only be done if you’re sure no invoices rely on it.`
     );
+    if (!ok) return;
+
+    setBanner(null);
+
+    try {
+      const res = await fetch(`/api/counties/${encodeURIComponent(countyId)}`, {
+        method: "DELETE",
+      });
+
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body.error || "Failed to delete county");
+
+      // If we deleted the default county, clear defaultCountyId
+      if (defaultCountyId === countyId) {
+        await handleSetDefaultCounty(null);
+      }
+
+      await loadAll();
+      setBanner({ kind: "success", text: "County deleted." });
+    } catch (err: any) {
+      console.error(err);
+      setBanner({
+        kind: "error",
+        text: err?.message ? String(err.message) : "Failed to delete county",
+      });
+    }
   }
 
-  if (!sessionEmail) {
-    return (
-      <div className="space-y-4">
-        <h1 className="text-2xl font-semibold tracking-tight text-slate-100">
-          Settings
-        </h1>
-        <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-6">
-          <p className="text-sm text-red-400">
-            You are not signed in. Please go to the login page.
-          </p>
-        </div>
-      </div>
-    );
-  }
-
-  if (loading) {
-    return (
-      <div className="space-y-4">
-        <h1 className="text-2xl font-semibold tracking-tight text-slate-100">
-          Settings
-        </h1>
-        <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-6">
-          <p className="text-sm text-slate-400">Loading settings…</p>
-        </div>
-      </div>
-    );
-  }
-
-  if (loadError || !settings) {
-    return (
-      <div className="space-y-4">
-        <h1 className="text-2xl font-semibold tracking-tight text-slate-100">
-          Settings
-        </h1>
-        <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-6">
-          <p className="text-sm text-red-400">
-            {loadError || "Failed to load settings."}
-          </p>
-        </div>
-      </div>
-    );
-  }
-
-  const timezoneIsKnown = settings.timezone
-    ? TIMEZONE_OPTIONS.some((tz) => tz.value === settings.timezone)
-    : false;
-
-  const planLabel = (() => {
-    if (!billing) return null;
-    if (billing.status === "trialing") return "Trial";
-    if (billing.status === "active") return "Active";
-    if (billing.status === "none") return "Not subscribed";
-    return "Inactive";
-  })();
-
-  const planPillClass = (() => {
-    if (!billing) return "bg-slate-800 text-slate-200";
-    if (billing.status === "trialing") return "bg-blue-900/40 text-blue-200";
-    if (billing.status === "active") return "bg-emerald-900/40 text-emerald-200";
-    return "bg-red-900/40 text-red-200";
-  })();
+  const defaultCountyLabel = defaultCountyId
+    ? countiesById.get(defaultCountyId)?.name || "Unknown county"
+    : "None";
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight text-slate-100">
-          Settings
-        </h1>
-        <p className="text-sm text-slate-400">
-          Configure your profile, business details, defaults, and subscription.
+      <DashboardGreeting />
+
+      {banner && (
+        <div
+          className={[
+            "rounded-xl border p-4",
+            banner.kind === "success"
+              ? "border-emerald-800 bg-emerald-900/20"
+              : "border-red-800 bg-red-900/20",
+          ].join(" ")}
+        >
+          <p
+            className={[
+              "text-sm font-medium",
+              banner.kind === "success" ? "text-emerald-200" : "text-red-200",
+            ].join(" ")}
+          >
+            {banner.kind === "success" ? "Success" : "Error"}
+          </p>
+          <p
+            className={[
+              "mt-1 text-sm",
+              banner.kind === "success"
+                ? "text-emerald-100/90"
+                : "text-red-100/90",
+            ].join(" ")}
+          >
+            {banner.text}
+          </p>
+        </div>
+      )}
+
+      {loading && <p className="text-sm text-slate-500">Loading…</p>}
+
+      {/* GENERAL SETTINGS */}
+      <div className="rounded-2xl border border-slate-800 bg-slate-900/50 p-4">
+        <h1 className="text-lg font-semibold text-slate-100">Settings</h1>
+        <p className="mt-1 text-sm text-slate-400">
+          Manage defaults and operational preferences.
         </p>
-      </div>
 
-      <form onSubmit={handleSubmit} className="grid gap-4 md:grid-cols-3">
-        {/* Left: profile + business */}
-        <div className="md:col-span-2 space-y-4">
-          <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-4 shadow-sm space-y-3">
-            <h2 className="text-sm font-medium text-slate-200">Profile</h2>
-
-            <div className="grid gap-3 md:grid-cols-2">
-              <div className="space-y-1">
-                <label className="block text-xs font-medium text-slate-400">
-                  Full name
-                </label>
-                <input
-                  type="text"
-                  value={settings.fullName ?? ""}
-                  onChange={(e) => update("fullName", e.target.value || null)}
-                  className="w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-200 placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
-                  placeholder="Your name"
-                />
-              </div>
-
-              <div className="space-y-1">
-                <label className="block text-xs font-medium text-slate-400">
-                  Phone
-                </label>
-                <input
-                  type="tel"
-                  value={settings.phone ?? ""}
-                  onChange={(e) => update("phone", e.target.value || null)}
-                  className="w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-200 placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
-                  placeholder="(555) 555-5555"
-                />
-              </div>
+        <form onSubmit={handleSaveGeneral} className="mt-4 grid gap-4">
+          <div className="grid gap-3 md:grid-cols-2">
+            <div>
+              <label className="mb-1 block text-xs font-medium text-slate-400">
+                Full name
+              </label>
+              <input
+                className="w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-200"
+                value={fullName}
+                onChange={(e) => setFullName(e.target.value)}
+                placeholder="Your name"
+              />
             </div>
-          </div>
 
-          <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-4 shadow-sm space-y-3">
-            <h2 className="text-sm font-medium text-slate-200">
-              Business details
-            </h2>
+            <div>
+              <label className="mb-1 block text-xs font-medium text-slate-400">
+                Phone
+              </label>
+              <input
+                className="w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-200"
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+                placeholder="+1 (555) 123-4567"
+              />
+            </div>
 
-            <div className="space-y-1">
-              <label className="block text-xs font-medium text-slate-400">
+            <div>
+              <label className="mb-1 block text-xs font-medium text-slate-400">
                 Business name
               </label>
               <input
-                type="text"
-                value={settings.businessName ?? ""}
-                onChange={(e) =>
-                  update("businessName", e.target.value || null)
-                }
-                className="w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-200 placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
-                placeholder="Example: HarmonyDesk Mediation Services"
+                className="w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-200"
+                value={businessName}
+                onChange={(e) => setBusinessName(e.target.value)}
+                placeholder="Mediation Practice LLC"
               />
             </div>
 
-            <div className="space-y-1">
-              <label className="block text-xs font-medium text-slate-400">
+            <div>
+              <label className="mb-1 block text-xs font-medium text-slate-400">
                 Business address
               </label>
-              <textarea
-                value={settings.businessAddress ?? ""}
-                onChange={(e) =>
-                  update("businessAddress", e.target.value || null)
-                }
-                rows={3}
-                className="w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-200 placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
-                placeholder={"Street\nCity, State ZIP"}
+              <input
+                className="w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-200"
+                value={businessAddress}
+                onChange={(e) => setBusinessAddress(e.target.value)}
+                placeholder="Street, City, State"
               />
             </div>
-          </div>
-        </div>
 
-        {/* Right: plan + defaults */}
-        <div className="space-y-4">
-          {/* Plan & Subscription */}
-          <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-4 shadow-sm space-y-3">
-            <div className="flex items-center justify-between gap-2">
-              <h2 className="text-sm font-medium text-slate-200">
-                Plan & Subscription
-              </h2>
-
-              {billingLoading ? (
-                <span className="text-xs text-slate-400">Loading…</span>
-              ) : planLabel ? (
-                <span
-                  className={`text-xs px-2 py-1 rounded-full border border-slate-700 ${planPillClass}`}
-                >
-                  {planLabel}
-                </span>
-              ) : null}
-            </div>
-
-            {billingError && (
-              <p className="text-xs text-red-400">{billingError}</p>
-            )}
-
-            {!billingLoading && billing && (
-              <div className="space-y-2 text-xs text-slate-300">
-                <div className="flex justify-between">
-                  <span className="text-slate-400">Account</span>
-                  <span className="font-medium">{sessionEmail}</span>
-                </div>
-
-                <div className="flex justify-between">
-                  <span className="text-slate-400">Access</span>
-                  <span className="font-medium">
-                    {billing.enabled ? "Enabled" : "Locked"}
-                  </span>
-                </div>
-
-                {billing.status === "trialing" && billing.trial_end_at && (
-                  <div className="flex justify-between">
-                    <span className="text-slate-400">Trial ends</span>
-                    <span className="font-medium">
-                      {formatDateTime(billing.trial_end_at)}
-                    </span>
-                  </div>
-                )}
-              </div>
-            )}
-
-            <div className="pt-2">
-              <button
-                type="button"
-                onClick={handleManageSubscription}
-                disabled={portalLoading || billingLoading}
-                className="w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-xs font-medium text-slate-200 hover:bg-slate-900 disabled:opacity-60 transition-colors"
-              >
-                {portalLoading ? "Opening portal…" : "Manage subscription"}
-              </button>
-
-              {portalError && (
-                <p className="mt-2 text-xs text-red-400">{portalError}</p>
-              )}
-
-              <p className="mt-2 text-[11px] text-slate-500">
-                Manage your plan, payment method, invoices, or cancel in Stripe.
-              </p>
-            </div>
-          </div>
-
-          {/* Defaults */}
-          <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-4 shadow-sm space-y-3">
-            <h2 className="text-sm font-medium text-slate-200">Defaults</h2>
-
-            <div className="space-y-1">
-              <label className="block text-xs font-medium text-slate-400">
+            <div>
+              <label className="mb-1 block text-xs font-medium text-slate-400">
                 Default hourly rate
               </label>
               <input
                 type="number"
-                min={0}
-                step={10}
-                value={settings.defaultHourlyRate ?? ""}
-                onChange={(e) =>
-                  update(
-                    "defaultHourlyRate",
-                    e.target.value === "" ? null : Number(e.target.value)
-                  )
-                }
-                className="w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-200 placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
-                placeholder="200"
+                min="0"
+                step="1"
+                className="w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-200"
+                value={defaultHourlyRate}
+                onChange={(e) => setDefaultHourlyRate(e.target.value)}
               />
             </div>
 
-            <div className="space-y-1">
-              <label className="block text-xs font-medium text-slate-400">
-                Default county
-              </label>
-              <input
-                type="text"
-                value={settings.defaultCounty ?? ""}
-                onChange={(e) =>
-                  update("defaultCounty", e.target.value || null)
-                }
-                className="w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-200 placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
-                placeholder="King County"
-              />
-            </div>
-
-            <div className="space-y-1">
-              <label className="block text-xs font-medium text-slate-400">
+            <div>
+              <label className="mb-1 block text-xs font-medium text-slate-400">
                 Default session duration (hours)
               </label>
               <input
                 type="number"
-                min={0.25}
-                step={0.25}
-                value={settings.defaultSessionDuration ?? ""}
-                onChange={(e) =>
-                  update(
-                    "defaultSessionDuration",
-                    e.target.value === "" ? null : Number(e.target.value)
-                  )
-                }
-                className="w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-200 placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
-                placeholder="1.0"
+                min="0"
+                step="0.25"
+                className="w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-200"
+                value={defaultSessionDuration}
+                onChange={(e) => setDefaultSessionDuration(e.target.value)}
               />
             </div>
 
-            <div className="space-y-1">
-              <label className="block text-xs font-medium text-slate-400">
+            <div>
+              <label className="mb-1 block text-xs font-medium text-slate-400">
                 Timezone
               </label>
-              <select
-                value={settings.timezone ?? ""}
-                onChange={(e) => update("timezone", e.target.value || null)}
-                className="w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
+              <input
+                className="w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-200"
+                value={timezone}
+                onChange={(e) => setTimezone(e.target.value)}
+                placeholder="America/Los_Angeles"
+              />
+            </div>
+
+            <div className="flex items-center gap-3 pt-6">
+              <input
+                id="darkMode"
+                type="checkbox"
+                className="h-4 w-4"
+                checked={darkMode}
+                onChange={(e) => setDarkMode(e.target.checked)}
+              />
+              <label
+                htmlFor="darkMode"
+                className="text-sm text-slate-200"
               >
-                <option value="">Select timezone…</option>
-                {TIMEZONE_OPTIONS.map((tz) => (
-                  <option key={tz.value} value={tz.value}>
-                    {tz.label}
-                  </option>
-                ))}
-                {settings.timezone && !timezoneIsKnown && (
-                  <option value={settings.timezone}>
-                    {settings.timezone} (custom)
-                  </option>
-                )}
-              </select>
-              <p className="text-[11px] text-slate-500">
-                Used for session times, calendar views, and reminders.
-              </p>
+                Dark mode
+              </label>
             </div>
           </div>
 
-          <button
-            type="submit"
-            disabled={saving}
-            className="w-full rounded-md bg-sky-600 px-3 py-2 text-xs font-medium text-white hover:bg-sky-500 disabled:opacity-60 transition-colors"
-          >
-            {saving ? "Saving…" : "Save settings"}
-          </button>
+          <div className="flex items-center justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => loadAll()}
+              className="rounded-md border border-slate-700 bg-transparent px-4 py-2 text-sm font-medium text-slate-200 hover:bg-slate-900"
+            >
+              Reload
+            </button>
+            <button
+              type="submit"
+              className="rounded-md bg-sky-600 px-4 py-2 text-sm font-medium text-white hover:bg-sky-500"
+            >
+              Save settings
+            </button>
+          </div>
+        </form>
+      </div>
 
-          {saveError && <p className="text-xs text-red-400">{saveError}</p>}
-          {saveSuccess && !saveError && (
-            <p className="text-xs text-emerald-400">Settings saved.</p>
-          )}
+      {/* COUNTY SETTINGS */}
+      <div className="rounded-2xl border border-slate-800 bg-slate-900/50 p-4">
+        <h2 className="text-sm font-semibold text-slate-200">
+          County reporting
+        </h2>
+        <p className="mt-1 text-xs text-slate-400">
+          Counties drive deterministic exports and invoice binding. Default county
+          auto-applies to new invoices (Billing page behavior).
+        </p>
+
+        <div className="mt-4 grid gap-4 md:grid-cols-2">
+          {/* Default county */}
+          <div className="rounded-xl border border-slate-800 bg-slate-950/50 p-3">
+            <p className="text-xs font-medium text-slate-300">Default county</p>
+            <p className="mt-1 text-[11px] text-slate-500">
+              Current: <span className="text-slate-200">{defaultCountyLabel}</span>
+            </p>
+
+            <div className="mt-3 flex items-center gap-2">
+              <select
+                className="w-full rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-200"
+                value={defaultCountyId ?? ""}
+                onChange={(e) => {
+                  const v = e.target.value || null;
+                  setDefaultCountyId(v);
+                }}
+                disabled={counties.length === 0}
+              >
+                {counties.length === 0 ? (
+                  <option value="">No counties configured</option>
+                ) : (
+                  <>
+                    <option value="">None</option>
+                    {counties.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name} ({c.reportFormat.toUpperCase()})
+                      </option>
+                    ))}
+                  </>
+                )}
+              </select>
+
+              <button
+                type="button"
+                className="rounded-md border border-slate-700 bg-slate-800 px-3 py-2 text-xs font-medium text-slate-200 hover:bg-slate-700 disabled:opacity-60"
+                disabled={counties.length === 0 && !defaultCountyId}
+                onClick={() => handleSetDefaultCounty(defaultCountyId)}
+              >
+                Save
+              </button>
+            </div>
+          </div>
+
+          {/* Add county */}
+          <div className="rounded-xl border border-slate-800 bg-slate-950/50 p-3">
+            <p className="text-xs font-medium text-slate-300">Add county</p>
+
+            <form onSubmit={handleAddCounty} className="mt-3 space-y-2">
+              <div>
+                <label className="mb-1 block text-[11px] font-medium text-slate-400">
+                  County name
+                </label>
+                <input
+                  className="w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-200"
+                  value={newCountyName}
+                  onChange={(e) => setNewCountyName(e.target.value)}
+                  placeholder="e.g. King County"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="mb-1 block text-[11px] font-medium text-slate-400">
+                  Report format
+                </label>
+                <select
+                  className="w-full rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-200"
+                  value={newCountyFormat}
+                  onChange={(e) =>
+                    setNewCountyFormat(e.target.value as "csv" | "pdf")
+                  }
+                >
+                  <option value="csv">CSV</option>
+                  <option value="pdf">PDF</option>
+                </select>
+              </div>
+
+              <button
+                type="submit"
+                className="rounded-md bg-sky-600 px-3 py-2 text-xs font-medium text-white hover:bg-sky-500"
+              >
+                Add county
+              </button>
+            </form>
+          </div>
         </div>
-      </form>
+
+        {/* County list */}
+        <div className="mt-4 rounded-xl border border-slate-800 bg-slate-950/50 p-3">
+          <div className="flex items-center justify-between">
+            <p className="text-xs font-medium text-slate-300">Counties</p>
+            <p className="text-[11px] text-slate-500">
+              {counties.length} configured
+            </p>
+          </div>
+
+          {counties.length === 0 ? (
+            <p className="mt-2 text-xs text-slate-500">
+              No counties yet. Add one above.
+            </p>
+          ) : (
+            <div className="mt-3 space-y-2">
+              {counties.map((c) => (
+                <div
+                  key={c.id}
+                  className="flex items-center justify-between rounded-lg border border-slate-800 bg-slate-950 p-3"
+                >
+                  <div>
+                    <p className="text-sm font-medium text-slate-200">
+                      {c.name}
+                    </p>
+                    <p className="text-[11px] text-slate-500">
+                      Format: {c.reportFormat.toUpperCase()}
+                    </p>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => handleDeleteCounty(c.id)}
+                    className="rounded-md border border-slate-700 bg-transparent px-3 py-1 text-xs font-medium text-red-400 hover:border-red-800 hover:bg-red-900/20"
+                  >
+                    Delete
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <p className="mt-3 text-[11px] text-slate-500">
+            Note: If you delete a county that invoices still reference, exports or
+            UI may show “Unknown county”. Prefer deleting only unused counties.
+          </p>
+        </div>
+      </div>
     </div>
   );
 }
