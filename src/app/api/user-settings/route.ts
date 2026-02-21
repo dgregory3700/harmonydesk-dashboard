@@ -9,7 +9,13 @@ type UserSettings = {
   businessName: string | null;
   businessAddress: string | null;
   defaultHourlyRate: number | null;
+
+  // legacy (string)
   defaultCounty: string | null;
+
+  // new (uuid)
+  defaultCountyId: string | null;
+
   defaultSessionDuration: number | null;
   timezone: string | null;
   darkMode: boolean;
@@ -25,7 +31,8 @@ function mapRow(row: any): UserSettings {
     businessAddress: row.business_address,
     defaultHourlyRate:
       row.default_hourly_rate !== null ? Number(row.default_hourly_rate) : null,
-    defaultCounty: row.default_county,
+    defaultCounty: row.default_county ?? null,
+    defaultCountyId: row.default_county_id ?? null,
     defaultSessionDuration:
       row.default_session_duration !== null
         ? Number(row.default_session_duration)
@@ -44,7 +51,8 @@ function defaultSettings(userEmail: string): UserSettings {
     businessName: null,
     businessAddress: null,
     defaultHourlyRate: 200,
-    defaultCounty: "King County",
+    defaultCounty: "King County", // legacy default
+    defaultCountyId: null, // new deterministic default is chosen by user in Settings
     defaultSessionDuration: 1.0,
     timezone: "America/Los_Angeles",
     darkMode: false,
@@ -106,8 +114,17 @@ export async function PATCH(req: NextRequest) {
       update.default_hourly_rate = Number.isNaN(r) ? null : r;
     }
 
+    // legacy string (keep, but no longer used for exports)
     if ("defaultCounty" in body)
       update.default_county = body.defaultCounty || null;
+
+    // new uuid default
+    if ("defaultCountyId" in body) {
+      update.default_county_id =
+        typeof body.defaultCountyId === "string" && body.defaultCountyId.trim()
+          ? body.defaultCountyId.trim()
+          : null;
+    }
 
     if ("defaultSessionDuration" in body) {
       const d = Number.parseFloat(body.defaultSessionDuration ?? "0");
@@ -117,7 +134,6 @@ export async function PATCH(req: NextRequest) {
     if ("timezone" in body) update.timezone = body.timezone || null;
     if ("darkMode" in body) update.dark_mode = !!body.darkMode;
 
-    // Upsert: insert if missing, otherwise update
     const { data, error } = await supabase
       .from("user_settings")
       .upsert(
