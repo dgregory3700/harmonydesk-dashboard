@@ -131,6 +131,16 @@ async function domainLooksRoutable(email: string): Promise<boolean> {
   }
 }
 
+function looksLikeSuppressionMessage(msg: string): boolean {
+  const s = (msg || "").toLowerCase();
+  return (
+    s.includes("suppression") ||
+    s.includes("suppressed") ||
+    s.includes("suppression list") ||
+    s.includes("recipient is on the suppression list")
+  );
+}
+
 async function sendViaResend(args: {
   to: string;
   subject: string;
@@ -168,14 +178,49 @@ async function sendViaResend(args: {
 
     const json = await resp.json().catch(() => null);
 
+    // Provider error on non-2xx
     if (!resp.ok) {
       const msg =
         (json && (json.error?.message || json.message)) ||
         `Resend error (HTTP ${resp.status})`;
-      return { ok: false as const, error: msg, details: json };
+
+      // Surface suppression explicitly if present
+      const suppression =
+        typeof msg === "string" && looksLikeSuppressionMessage(msg);
+
+      return {
+        ok: false as const,
+        error: msg,
+        code: suppression ? "RESEND_SUPPRESSED" : "RESEND_ERROR",
+        details: json,
+      };
     }
 
-    const messageId = json?.id ? String(json.id) : undefined;
+    // Defensive: some providers return 200 with an error-ish shape.
+    const maybeMsg =
+      (json && (json.error?.message || json.message || json.error)) || "";
+    if (typeof maybeMsg === "string" && looksLikeSuppressionMessage(maybeMsg)) {
+      return {
+        ok: false as const,
+        error:
+          "Recipient is on Resend's suppression list. Remove it from suppression or use a different email address.",
+        code: "RESEND_SUPPRESSED",
+        details: json,
+      };
+    }
+
+    // Success must include an id. If not, treat as failure (prevents false Sent).
+    const messageId = json?.id ? String(json.id) : "";
+    if (!messageId) {
+      return {
+        ok: false as const,
+        error:
+          "Email provider returned an invalid success response (missing message id).",
+        code: "RESEND_INVALID_SUCCESS",
+        details: json,
+      };
+    }
+
     return { ok: true as const, messageId, raw: json, from };
   } catch (err: any) {
     const msg =
@@ -184,7 +229,7 @@ async function sendViaResend(args: {
         : err?.message
         ? String(err.message)
         : "Network error sending email";
-    return { ok: false as const, error: msg };
+    return { ok: false as const, error: msg, code: "RESEND_NETWORK" };
   } finally {
     clearTimeout(timeoutId);
   }
@@ -199,8 +244,7 @@ export async function POST(req: NextRequest, context: IdContext) {
     const { id } = await context.params;
 
     const body = await req.json().catch(() => ({}));
-    const toEmail =
-      typeof body.toEmail === "string" ? body.toEmail.trim() : "";
+    const toEmail = typeof body.toEmail === "string" ? body.toEmail.trim() : "";
 
     if (!toEmail) {
       return NextResponse.json(
@@ -216,8 +260,7 @@ export async function POST(req: NextRequest, context: IdContext) {
       );
     }
 
-    // ✅ Deterministic negative test for fake domains:
-    // Reject domains that do not resolve (MX or A/AAAA).
+    // Deterministic negative test for fake domains:
     const routable = await domainLooksRoutable(toEmail);
     if (!routable) {
       return NextResponse.json(
@@ -264,24 +307,28 @@ export async function POST(req: NextRequest, context: IdContext) {
     });
 
     if (!send.ok) {
+      // Suppression is not a transient provider failure; surface it clearly.
+      const isSuppressed = (send as any).code === "RESEND_SUPPRESSED";
+
       console.error("Invoice email send failed:", {
         invoice_id: id,
         provider: "resend",
+        code: (send as any).code,
         error: send.error,
         details: (send as any).details,
       });
 
       return NextResponse.json(
         {
-          error: "EMAIL_SEND_FAILED",
+          error: isSuppressed ? "RECIPIENT_SUPPRESSED" : "EMAIL_SEND_FAILED",
           provider: "resend",
           message: send.error,
         },
-        { status: 502 }
+        { status: isSuppressed ? 409 : 502 }
       );
     }
 
-    // 4) After successful provider send: update status to Sent
+    // 4) After successful provider acceptance: update status to Sent
     const { data: updatedRow, error: updateError } = await supabase
       .from("invoices")
       .update({ status: "Sent" })
