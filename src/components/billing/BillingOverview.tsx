@@ -16,10 +16,15 @@ type Invoice = {
   countyId: string | null;
 };
 
+type CountyReportFormat =
+  | "csv_line_per_invoice"
+  | "pdf_line_per_invoice"
+  | "pdf_grouped_by_case";
+
 type County = {
   id: string;
   name: string;
-  reportFormat: "csv" | "pdf";
+  reportFormat: CountyReportFormat;
 };
 
 type UserSettings = {
@@ -38,6 +43,16 @@ type BannerState =
   | { kind: "success"; text: string; invoiceId?: string }
   | { kind: "error"; text: string; invoiceId?: string }
   | null;
+
+function countyFormatLabel(f: CountyReportFormat): string {
+  if (f === "csv_line_per_invoice") return "CSV";
+  if (f === "pdf_line_per_invoice") return "PDF";
+  return "PDF (grouped by case)";
+}
+
+function countyFileExt(f: CountyReportFormat): "csv" | "pdf" {
+  return f === "csv_line_per_invoice" ? "csv" : "pdf";
+}
 
 export default function BillingOverview() {
   const [invoices, setInvoices] = useState<Invoice[]>([]);
@@ -321,7 +336,10 @@ export default function BillingOverview() {
         body: JSON.stringify({ toEmail: toEmail.trim() }),
       });
 
-      const bodyJson = await res.json().catch(() => ({}));
+      // If server returns non-JSON, we still want a clean error.
+      const bodyJson = await res
+        .json()
+        .catch(() => ({ error: "Invalid server response" }));
 
       if (!res.ok) {
         const msg = extractErrorMessage(bodyJson);
@@ -333,10 +351,19 @@ export default function BillingOverview() {
         return;
       }
 
+      // Success shapes we tolerate:
+      // - { invoice: {...}, email: {...} }
+      // - { ...invoiceFields }
       const updatedInvoice = (bodyJson?.invoice ?? bodyJson) as Invoice;
 
+      // If server didn't echo a full invoice, fall back to optimistic status update.
+      const safeInvoice: Invoice =
+        updatedInvoice && typeof updatedInvoice.id === "string"
+          ? updatedInvoice
+          : { ...inv, status: "Sent" };
+
       setInvoices((prev) =>
-        prev.map((invoice) => (invoice.id === inv.id ? updatedInvoice : invoice))
+        prev.map((invoice) => (invoice.id === inv.id ? safeInvoice : invoice))
       );
 
       setBanner({
@@ -354,7 +381,7 @@ export default function BillingOverview() {
     }
   }
 
-  // Deterministic export (server-side filtering happens in your export endpoint)
+  // Deterministic export: server derives format from county.report_format and filters Sent invoices.
   async function exportCountyReport(countyId: string) {
     const county = countiesById.get(countyId);
     if (!county) return;
@@ -362,9 +389,8 @@ export default function BillingOverview() {
     try {
       setExporting(true);
 
-      const format = county.reportFormat; // "csv" | "pdf"
       const res = await fetch(
-        `/api/counties/${encodeURIComponent(countyId)}/export?format=${format}`,
+        `/api/counties/${encodeURIComponent(countyId)}/export`,
         { method: "GET" }
       );
 
@@ -376,7 +402,7 @@ export default function BillingOverview() {
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
 
-      const ext = format === "pdf" ? "pdf" : "csv";
+      const ext = countyFileExt(county.reportFormat);
       const safeName = county.name
         .toLowerCase()
         .replace(/[^a-z0-9]+/g, "-")
@@ -719,7 +745,7 @@ export default function BillingOverview() {
               ) : (
                 counties.map((c) => (
                   <option key={c.id} value={c.id}>
-                    {c.name} ({c.reportFormat.toUpperCase()})
+                    {c.name} ({countyFormatLabel(c.reportFormat)})
                   </option>
                 ))
               )}
