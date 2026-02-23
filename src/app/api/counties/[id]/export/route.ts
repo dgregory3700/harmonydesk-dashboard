@@ -16,6 +16,7 @@ type InvoiceRow = {
   status: string;
   due: string | null;
   created_at: string;
+  county_reported_at?: string | null;
 };
 
 type CountyReportFormat =
@@ -64,7 +65,12 @@ export async function GET(req: NextRequest, context: IdContext) {
     const { id: countyId } = await context.params;
 
     const url = new URL(req.url);
+
+    // Preview = generate the file but DO NOT stamp county_reported_at.
     const preview = url.searchParams.get("preview") === "1";
+
+    // (Optional) meta-only preview for future UI usage (not used today).
+    const metaOnly = url.searchParams.get("meta") === "1";
 
     // Load county (scoped)
     const { data: county, error: countyErr } = await supabase
@@ -76,7 +82,10 @@ export async function GET(req: NextRequest, context: IdContext) {
 
     if (countyErr) {
       console.error("Supabase load county error:", countyErr);
-      return NextResponse.json({ error: "Failed to load county" }, { status: 500 });
+      return NextResponse.json(
+        { error: "Failed to load county" },
+        { status: 500 }
+      );
     }
     if (!county) {
       return NextResponse.json({ error: "County not found" }, { status: 404 });
@@ -88,18 +97,21 @@ export async function GET(req: NextRequest, context: IdContext) {
     const kind: "csv" | "pdf" =
       requested || exportKindFromCountyFormat(county.report_format as CountyReportFormat);
 
-    // Pull only Sent invoices for this county
+    // Pull only UNREPORTED invoices for this county (decoupled from status).
     const { data: invoices, error } = await supabase
       .from("invoices")
       .select("*")
       .eq("user_email", userEmail)
       .eq("county_id", countyId)
-      .eq("status", "Sent")
+      .is("county_reported_at", null)
       .order("created_at", { ascending: false });
 
     if (error) {
       console.error("Supabase county export query error:", error);
-      return NextResponse.json({ error: "Failed to load invoices for export" }, { status: 500 });
+      return NextResponse.json(
+        { error: "Failed to load invoices for export" },
+        { status: 500 }
+      );
     }
 
     const rows = (invoices ?? []) as InvoiceRow[];
@@ -116,10 +128,11 @@ export async function GET(req: NextRequest, context: IdContext) {
       { cases: 0, hours: 0, amount: 0 }
     );
 
-    if (preview) {
+    // Meta-only JSON preview (safe / non-mutating)
+    if (metaOnly) {
       return NextResponse.json({
         county: { id: county.id, name: county.name, reportFormat: county.report_format },
-        exportKind: kind, // "csv" | "pdf" (useful for UI)
+        exportKind: kind, // "csv" | "pdf"
         totals: {
           cases: totals.cases,
           hours: Math.round(totals.hours * 100) / 100,
@@ -137,6 +150,34 @@ export async function GET(req: NextRequest, context: IdContext) {
         })),
       });
     }
+
+    async function markInvoicesReported(invoiceIds: string[]) {
+      if (invoiceIds.length === 0) return;
+
+      const { error: markErr } = await supabase
+        .from("invoices")
+        .update({ county_reported_at: new Date().toISOString() })
+        .in("id", invoiceIds)
+        .eq("user_email", userEmail)
+        .eq("county_id", countyId)
+        .is("county_reported_at", null);
+
+      if (markErr) {
+        console.error("Failed to mark invoices county_reported_at:", markErr);
+        return NextResponse.json(
+          {
+            error:
+              "Export generated but failed to mark invoices as reported. Refusing to return file to avoid duplicate reporting risk.",
+            details: markErr.message,
+          },
+          { status: 500 }
+        );
+      }
+
+      return null;
+    }
+
+    const invoiceIds = rows.map((r) => r.id);
 
     if (kind === "csv") {
       const header = ["Case Number", "Matter", "Bill To", "Hours", "Rate", "Total"];
@@ -159,11 +200,19 @@ export async function GET(req: NextRequest, context: IdContext) {
         }),
       ].join("\n");
 
+      // Only stamp on real export (not preview)
+      if (!preview) {
+        const errRes = await markInvoicesReported(invoiceIds);
+        if (errRes) return errRes;
+      }
+
       return new NextResponse(csv, {
         status: 200,
         headers: {
           "Content-Type": "text/csv; charset=utf-8",
-          "Content-Disposition": `attachment; filename="${county.name}-report.csv"`,
+          "Content-Disposition": `attachment; filename="${county.name}-${
+            preview ? "preview" : "report"
+          }.csv"`,
         },
       });
     }
@@ -245,11 +294,19 @@ export async function GET(req: NextRequest, context: IdContext) {
 
       const pdfBytes = doc.output("arraybuffer");
 
+      // Only stamp on real export (not preview)
+      if (!preview) {
+        const errRes = await markInvoicesReported(invoiceIds);
+        if (errRes) return errRes;
+      }
+
       return new NextResponse(pdfBytes, {
         status: 200,
         headers: {
           "Content-Type": "application/pdf",
-          "Content-Disposition": `attachment; filename="${county.name}-report.pdf"`,
+          "Content-Disposition": `attachment; filename="${county.name}-${
+            preview ? "preview" : "report"
+          }.pdf"`,
         },
       });
     }
