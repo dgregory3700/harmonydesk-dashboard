@@ -18,6 +18,10 @@ type InvoiceRow = {
   rate: number | null;
   status: string | null;
   due: string | null;
+
+  // Needed for UI consistency after send
+  county_id?: string | null;
+  county_reported_at?: string | null;
 };
 
 type Invoice = {
@@ -29,6 +33,10 @@ type Invoice = {
   rate: number;
   status: InvoiceStatus;
   due: string;
+
+  // Keep shape consistent with /api/invoices
+  countyId: string | null;
+  countyReportedAt: string | null;
 };
 
 function mapRowToInvoice(row: any): Invoice {
@@ -41,6 +49,8 @@ function mapRowToInvoice(row: any): Invoice {
     rate: Number(row.rate ?? 0),
     status: row.status as InvoiceStatus,
     due: row.due ?? "",
+    countyId: row.county_id ?? null,
+    countyReportedAt: row.county_reported_at ?? null,
   };
 }
 
@@ -349,6 +359,7 @@ export async function POST(req: NextRequest, context: IdContext) {
       );
     }
 
+    // Return a fully-shaped invoice (includes countyId + countyReportedAt)
     return NextResponse.json({
       invoice: mapRowToInvoice(updatedRow),
       email: {
