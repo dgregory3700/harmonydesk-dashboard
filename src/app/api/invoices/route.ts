@@ -13,6 +13,9 @@ type Invoice = {
   status: InvoiceStatus;
   due: string;
   countyId: string | null;
+
+  // New county reporting lifecycle marker (null = unreported)
+  countyReportedAt: string | null;
 };
 
 function mapRowToInvoice(row: any): Invoice {
@@ -26,6 +29,7 @@ function mapRowToInvoice(row: any): Invoice {
     status: row.status as InvoiceStatus,
     due: row.due ?? "",
     countyId: row.county_id ?? null,
+    countyReportedAt: row.county_reported_at ?? null,
   };
 }
 
@@ -44,7 +48,10 @@ export async function GET(_req: NextRequest) {
 
     if (error) {
       console.error("Supabase GET /api/invoices error:", error);
-      return NextResponse.json({ error: "Failed to load invoices" }, { status: 500 });
+      return NextResponse.json(
+        { error: "Failed to load invoices" },
+        { status: 500 }
+      );
     }
 
     return NextResponse.json((data ?? []).map(mapRowToInvoice));
@@ -69,7 +76,10 @@ export async function POST(req: NextRequest) {
     const rate = Number(body.rate ?? 0);
 
     if (!caseNumber || !matter || !contact) {
-      return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
+      return NextResponse.json(
+        { error: "Missing required fields" },
+        { status: 400 }
+      );
     }
 
     const due =
@@ -103,13 +113,19 @@ export async function POST(req: NextRequest) {
         status: "Draft",
         due,
         county_id: countyId,
+
+        // Explicitly unreported on creation (null)
+        county_reported_at: null,
       })
       .select("*")
       .single();
 
     if (error || !data) {
       console.error("Supabase POST /api/invoices error:", error);
-      return NextResponse.json({ error: "Failed to create invoice" }, { status: 500 });
+      return NextResponse.json(
+        { error: "Failed to create invoice" },
+        { status: 500 }
+      );
     }
 
     return NextResponse.json(mapRowToInvoice(data), { status: 201 });
