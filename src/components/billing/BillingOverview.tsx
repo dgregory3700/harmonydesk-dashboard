@@ -14,6 +14,9 @@ type Invoice = {
   status: InvoiceStatus;
   due: string;
   countyId: string | null;
+
+  // New lifecycle dimension (may be undefined if older API response; treat as null)
+  countyReportedAt?: string | null;
 };
 
 type CountyReportFormat =
@@ -139,23 +142,24 @@ export default function BillingOverview() {
     [invoices]
   );
 
-  const sentForSelectedCounty = useMemo(() => {
+  const unreportedForSelectedCounty = useMemo(() => {
     if (!reportCountyId) return [];
-    return invoices.filter(
-      (inv) => inv.status === "Sent" && inv.countyId === reportCountyId
-    );
+    return invoices.filter((inv) => {
+      const reportedAt = inv.countyReportedAt ?? null;
+      return inv.countyId === reportCountyId && reportedAt === null;
+    });
   }, [invoices, reportCountyId]);
 
   const reportTotals = useMemo(() => {
     return {
-      count: sentForSelectedCounty.length,
-      hours: sentForSelectedCounty.reduce((sum, inv) => sum + inv.hours, 0),
-      amount: sentForSelectedCounty.reduce(
+      count: unreportedForSelectedCounty.length,
+      hours: unreportedForSelectedCounty.reduce((sum, inv) => sum + inv.hours, 0),
+      amount: unreportedForSelectedCounty.reduce(
         (sum, inv) => sum + inv.hours * inv.rate,
         0
       ),
     };
-  }, [sentForSelectedCounty]);
+  }, [unreportedForSelectedCounty]);
 
   function handleFormChange(field: keyof NewInvoiceForm, value: string) {
     setNewInvoice((prev) => ({ ...prev, [field]: value }));
@@ -381,7 +385,7 @@ export default function BillingOverview() {
     }
   }
 
-  // Deterministic export: server derives format from county.report_format and filters Sent invoices.
+  // Deterministic export: server derives format from county.report_format and filters UNREPORTED invoices.
   async function exportCountyReport(countyId: string) {
     const county = countiesById.get(countyId);
     if (!county) return;
@@ -452,7 +456,7 @@ export default function BillingOverview() {
             Client billing
           </h1>
           <p className="text-sm text-slate-400">
-            Track invoices and generate county reports from Sent invoices.
+            Track invoices and generate county reports from unreported county invoices.
           </p>
         </div>
         <div className="text-right">
@@ -728,7 +732,7 @@ export default function BillingOverview() {
               County month-end report
             </h2>
             <p className="text-xs text-slate-400">
-              Export is based on: invoices where county_id = selected AND status = Sent.
+              Export includes invoices where county_id = selected AND county_reported_at IS NULL.
             </p>
           </div>
 
@@ -758,12 +762,12 @@ export default function BillingOverview() {
                 !reportCountyId ||
                 counties.length === 0 ||
                 exporting ||
-                sentForSelectedCounty.length === 0
+                unreportedForSelectedCounty.length === 0
               }
               onClick={() => reportCountyId && exportCountyReport(reportCountyId)}
               title={
-                sentForSelectedCounty.length === 0
-                  ? "No Sent invoices for this county yet."
+                unreportedForSelectedCounty.length === 0
+                  ? "No unreported invoices for this county yet."
                   : "Download report"
               }
             >
@@ -775,7 +779,7 @@ export default function BillingOverview() {
         <div className="mt-3 text-xs text-slate-400">
           {reportCountyId ? (
             <>
-              {reportTotals.count} sent invoices • {reportTotals.hours.toFixed(2)} hours • $
+              {reportTotals.count} unreported invoices • {reportTotals.hours.toFixed(2)} hours • $
               {reportTotals.amount.toFixed(2)}
             </>
           ) : (
