@@ -65,10 +65,9 @@ export function CourtReportsPanel() {
     try {
       setExportingId(countyId);
 
-      // Deterministic server truth: export format is derived from county.report_format.
-      // Do NOT pass ?format=... (avoids enum drift / regressions).
+      // Preview = generate file without stamping county_reported_at
       const res = await fetch(
-        `/api/counties/${encodeURIComponent(countyId)}/export`,
+        `/api/counties/${encodeURIComponent(countyId)}/export?preview=1`,
         { method: "GET" }
       );
 
@@ -107,7 +106,7 @@ export function CourtReportsPanel() {
       </h2>
 
       <p className="text-[11px] text-slate-400 mb-3">
-        Reports are generated deterministically from Sent invoices by county.
+        Reports are generated deterministically from invoices that are not yet county-reported.
       </p>
 
       {loading && <p className="text-xs text-slate-500">Loading counties…</p>}
@@ -134,7 +133,7 @@ export function CourtReportsPanel() {
 
             <div className="mt-2 flex items-center justify-between">
               <span className="text-[11px] text-slate-500">
-                Export includes Sent invoices only.
+                Export includes invoices where county_reported_at IS NULL.
               </span>
 
               <button
