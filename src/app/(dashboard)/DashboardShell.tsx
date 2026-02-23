@@ -1,3 +1,4 @@
+//src/app/(dashboard)/DashboardShell.tsx
 "use client";
 
 import type { ReactNode } from "react";
@@ -9,7 +10,6 @@ import {
   FolderKanban,
   FileText,
   MessageCircle,
-  Link2,
   Users,
   Settings,
 } from "lucide-react";
@@ -25,7 +25,7 @@ const navItems = [
   { href: "/cases", label: "Cases", icon: FolderKanban },
   { href: "/billing", label: "Billing & Courts", icon: FileText },
   { href: "/messages", label: "Messages", icon: MessageCircle },
-  { href: "/booking-links", label: "Booking links", icon: Link2 },
+  // Booking links intentionally hidden until an actual booking flow exists.
   { href: "/clients", label: "Clients", icon: Users },
   { href: "/settings", label: "Settings", icon: Settings },
 ];
