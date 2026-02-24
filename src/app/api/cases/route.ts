@@ -126,13 +126,18 @@ export async function GET(_req: NextRequest) {
   }
 
   // 3) Return cases with nextSessionDate overridden by sessions-derived value
-  const cases = (caseRows ?? []).map((row) => {
-    const c = mapRowToCase(row);
-    return {
-      ...c,
-      nextSessionDate: nextByCaseId[c.id] ?? null,
-    };
-  });
+const cases = (caseRows ?? []).map((row) => {
+  const c = mapRowToCase(row);
+
+  // Product truth: Closed cases should not show a next upcoming session in the list,
+  // even if future sessions still exist.
+  const isClosed = c.status === "Closed";
+
+  return {
+    ...c,
+    nextSessionDate: isClosed ? null : nextByCaseId[c.id] ?? null,
+  };
+});
 
   return NextResponse.json(cases);
 }
