@@ -1,4 +1,3 @@
-import { headers } from "next/headers";
 import { DashboardGreeting } from "@/components/dashboard/DashboardGreeting";
 import { SessionsOverview } from "@/components/dashboard/SessionsOverview";
 import { TodayPanel } from "@/components/dashboard/TodayPanel";
@@ -17,8 +16,6 @@ type MediationSession = {
 type MediationCase = {
   id: string;
   status?: string | null;
-  parties?: string | null;
-  matter?: string | null;
 };
 
 type InvoiceStatus = "Draft" | "Sent" | "For county report";
@@ -26,22 +23,9 @@ type InvoiceStatus = "Draft" | "Sent" | "For county report";
 type Invoice = {
   id: string;
   status: InvoiceStatus;
-  due?: string;
-  caseNumber?: string;
-  matter?: string;
-  contact?: string;
 };
 
-function getBaseUrl() {
-  const h = headers();
-  const host = h.get("x-forwarded-host") ?? h.get("host");
-  const proto = h.get("x-forwarded-proto") ?? "https";
-  if (!host) return "";
-  return `${proto}://${host}`;
-}
-
 async function safeJson<T>(res: Response): Promise<T> {
-  // If the API returns empty body for any reason, avoid throwing
   const text = await res.text();
   return text ? (JSON.parse(text) as T) : (undefined as unknown as T);
 }
@@ -61,12 +45,10 @@ export default async function DashboardPage() {
   let upcomingSessions: MediationSession[] = [];
 
   try {
-    const baseUrl = getBaseUrl();
-
     const [sessionsRes, casesRes, invoicesRes] = await Promise.all([
-      fetch(`${baseUrl}/api/sessions`, { cache: "no-store" }),
-      fetch(`${baseUrl}/api/cases`, { cache: "no-store" }),
-      fetch(`${baseUrl}/api/invoices`, { cache: "no-store" }),
+      fetch("/api/sessions", { cache: "no-store" }),
+      fetch("/api/cases", { cache: "no-store" }),
+      fetch("/api/invoices", { cache: "no-store" }),
     ]);
 
     const nowMs = Date.now();
@@ -97,9 +79,8 @@ export default async function DashboardPage() {
       const cases = (await safeJson<MediationCase[]>(casesRes)) ?? [];
 
       /**
-       * Truth rule (documented):
+       * Truth rule:
        * We treat cases with status === "Open" as "New inquiries".
-       * This matches current workflow semantics: newly created / active intake lives in Open.
        */
       newInquiriesCount = cases.filter((c) => c.status === "Open").length;
     }
