@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { DashboardGreeting } from "@/components/dashboard/DashboardGreeting";
 
 type County = {
@@ -19,6 +19,9 @@ type UserSettings = {
   defaultCountyId: string | null; // new
   defaultSessionDuration: number | null;
   timezone: string | null;
+
+  // kept for backwards compatibility with server response typing,
+  // but the UI no longer renders or mutates this value
   darkMode: boolean;
 };
 
@@ -42,7 +45,6 @@ export default function SettingsPage() {
   const [defaultHourlyRate, setDefaultHourlyRate] = useState<number | string>(200);
   const [defaultSessionDuration, setDefaultSessionDuration] = useState<number | string>(1.0);
   const [timezone, setTimezone] = useState("America/Los_Angeles");
-  const [darkMode, setDarkMode] = useState(false);
 
   // County settings
   const [defaultCountyId, setDefaultCountyId] = useState<string | null>(null);
@@ -97,7 +99,6 @@ export default function SettingsPage() {
           : 1.0
       );
       setTimezone(s.timezone ?? "America/Los_Angeles");
-      setDarkMode(!!s.darkMode);
 
       // Default county: use the new uuid field
       const initialDefaultCountyId =
@@ -119,7 +120,10 @@ export default function SettingsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  async function patchUserSettings(patch: Partial<UserSettings>) {
+  // Prevent accidental re-introduction of darkMode in patch payloads.
+  type PatchableUserSettings = Omit<UserSettings, "darkMode">;
+
+  async function patchUserSettings(patch: Partial<PatchableUserSettings>) {
     const res = await fetch("/api/user-settings", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -155,7 +159,6 @@ export default function SettingsPage() {
           durNum !== null && Number.isFinite(durNum) ? durNum : null,
 
         timezone: timezone.trim(),
-        darkMode,
       });
 
       setSettings(saved);
@@ -392,21 +395,7 @@ export default function SettingsPage() {
               />
             </div>
 
-            <div className="flex items-center gap-3 pt-6">
-              <input
-                id="darkMode"
-                type="checkbox"
-                className="h-4 w-4"
-                checked={darkMode}
-                onChange={(e) => setDarkMode(e.target.checked)}
-              />
-              <label
-                htmlFor="darkMode"
-                className="text-sm text-slate-200"
-              >
-                Dark mode
-              </label>
-            </div>
+            {/* Dark mode toggle removed (theme is fixed/deterministic) */}
           </div>
 
           <div className="flex items-center justify-end gap-2">
@@ -458,7 +447,7 @@ export default function SettingsPage() {
                 {counties.length === 0 ? (
                   <option value="">No counties configured</option>
                 ) : (
-                  <> 
+                  <>
                     <option value="">None</option>
                     {counties.map((c) => (
                       <option key={c.id} value={c.id}>
