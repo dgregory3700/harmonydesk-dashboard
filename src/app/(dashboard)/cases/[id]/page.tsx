@@ -277,10 +277,16 @@ export default function CaseDetailPage() {
       }
 
       const updated = (await res.json()) as MediationCase;
-      setCaseData(updated);
-      setLocalStatus(updated.status);
-      setLocalNotes(updated.notes ?? "");
-      setCaseSaveSuccess(true);
+setCaseData(updated);
+setLocalStatus(updated.status);
+setLocalNotes(updated.notes ?? "");
+setCaseSaveSuccess(true);
+
+// Ensure server-rendered pages (like /dashboard) don't show stale cached data after mutations.
+router.refresh();
+
+// Optional: warm the dashboard route so the next navigation pulls fresh output.
+router.prefetch("/dashboard");
     } catch (err: any) {
       console.error("Error saving case:", err);
       setCaseSaveError(err?.message ?? "Failed to save changes");
