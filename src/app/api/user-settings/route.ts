@@ -18,6 +18,8 @@ type UserSettings = {
 
   defaultSessionDuration: number | null;
   timezone: string | null;
+
+  // server may still store/return this, but UI no longer mutates it
   darkMode: boolean;
 };
 
@@ -99,6 +101,12 @@ export async function PATCH(req: NextRequest) {
     const { supabase, userEmail } = auth;
     const body = await req.json();
 
+    // Truth alignment: ignore any theme-related fields even if older clients send them.
+    if (body && typeof body === "object") {
+      delete (body as any).darkMode;
+      delete (body as any).dark_mode;
+    }
+
     const update: Record<string, any> = {};
 
     if ("fullName" in body)
@@ -132,7 +140,8 @@ export async function PATCH(req: NextRequest) {
     }
 
     if ("timezone" in body) update.timezone = body.timezone || null;
-    if ("darkMode" in body) update.dark_mode = !!body.darkMode;
+
+    // NOTE: intentionally no handling for dark_mode here
 
     const { data, error } = await supabase
       .from("user_settings")
