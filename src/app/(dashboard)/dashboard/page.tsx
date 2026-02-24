@@ -41,6 +41,8 @@ function parseMillis(iso?: string | null): number | null {
   return Number.isFinite(ms) ? ms : null;
 }
 
+type CaseStatus = "Open" | "Upcoming" | "Closed";
+
 export default async function DashboardPage() {
   // Default values if anything fails (stability > perfection)
   let upcomingSessionsCount = 0;
@@ -57,28 +59,65 @@ export default async function DashboardPage() {
       const nowIso = new Date().toISOString();
       const nowMs = Date.now();
 
-      // 1) Upcoming sessions (future + not completed)
+      /**
+       * 1) Upcoming sessions (future + not completed)
+       * Product truth: sessions from CLOSED cases should not be counted/displayed as upcoming.
+       */
       const { data: sessionsData } = await supabase
         .from("sessions")
         .select("id,user_email,case_id,date,duration_hours,notes,completed")
         .eq("user_email", userEmail)
         .eq("completed", false)
+        .gt("date", nowIso)
         .order("date", { ascending: true });
 
-      const sessions = (sessionsData ?? [])
+      const rawUpcoming = (sessionsData ?? [])
         .map(mapRowToSession)
+        // keep the defensive parse in case some rows have non-ISO / unexpected values
         .filter((s) => {
           const ms = parseMillis(s.date);
           return ms !== null && ms > nowMs;
         });
 
-      upcomingSessions = sessions.slice(0, 6);
-      upcomingSessionsCount = sessions.length;
+      // If we have upcoming sessions, fetch their cases and exclude CLOSED cases.
+      let filteredUpcoming = rawUpcoming;
 
-      // 2) New inquiries (truth rule: status === "Open")
+      if (rawUpcoming.length > 0) {
+        const caseIds = Array.from(
+          new Set(rawUpcoming.map((s) => s.caseId).filter(Boolean))
+        );
+
+        if (caseIds.length > 0) {
+          const { data: casesData, error: casesErr } = await supabase
+            .from("cases")
+            .select("id,status")
+            .eq("user_email", userEmail)
+            .in("id", caseIds);
+
+          if (casesErr) {
+            // fail-soft: if case lookup fails, keep sessions-based upcoming (better than blanking dashboard)
+            console.error("Dashboard cases lookup error:", casesErr);
+          } else {
+            const statusById = new Map<string, CaseStatus>();
+            for (const row of casesData ?? []) {
+              statusById.set(String((row as any).id), (row as any).status);
+            }
+
+            filteredUpcoming = rawUpcoming.filter((s) => {
+              const st = statusById.get(s.caseId);
+              // If status is missing, fail-soft and allow it (avoids hiding legit sessions due to mapping issues)
+              if (!st) return true;
+              return st !== "Closed";
+            });
+          }
+        }
+      }
+
+      upcomingSessions = filteredUpcoming.slice(0, 6);
+      upcomingSessionsCount = filteredUpcoming.length;
+
       /**
-       * Truth rule:
-       * We treat cases with status === "Open" as "New inquiries".
+       * 2) New inquiries (truth rule: status === "Open")
        */
       const { count: openCasesCount } = await supabase
         .from("cases")
@@ -88,7 +127,9 @@ export default async function DashboardPage() {
 
       newInquiriesCount = Number(openCasesCount ?? 0);
 
-      // 3) Draft invoices (status === "Draft")
+      /**
+       * 3) Draft invoices (status === "Draft")
+       */
       const { count: draftCount } = await supabase
         .from("invoices")
         .select("id", { count: "exact", head: true })
@@ -96,9 +137,6 @@ export default async function DashboardPage() {
         .eq("status", "Draft");
 
       draftInvoicesCount = Number(draftCount ?? 0);
-
-      // (nowIso kept in case you want it later)
-      void nowIso;
     }
   } catch {
     // Swallow errors and render zeros/empty state (keeps dashboard stable)
