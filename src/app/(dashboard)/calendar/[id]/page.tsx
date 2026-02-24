@@ -1,3 +1,5 @@
+//src/app/(dashboard)/calendar/[id]/page.tsx
+
 "use client";
 
 import { useEffect, useState } from "react";
@@ -251,14 +253,17 @@ export default function SessionDetailPage() {
       <div className="grid gap-4 md:grid-cols-3">
         {/* Left: session + notes */}
         <div className="md:col-span-2 space-y-4">
-          
           {/* Details Card */}
           <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-4 shadow-sm space-y-2">
-            <h2 className="text-sm font-medium text-slate-300">Session details</h2>
+            <h2 className="text-sm font-medium text-slate-300">
+              Session details
+            </h2>
             <dl className="grid gap-2 text-sm md:grid-cols-2">
               <div>
                 <dt className="text-xs text-slate-500">Date & time</dt>
-                <dd className="text-slate-300">{formatDateTime(session.date)}</dd>
+                <dd className="text-slate-300">
+                  {formatDateTime(session.date)}
+                </dd>
               </div>
               <div>
                 <dt className="text-xs text-slate-500">Duration</dt>
@@ -320,7 +325,7 @@ export default function SessionDetailPage() {
                   {caseData.caseNumber} • {caseData.parties}
                 </p>
                 <p className="text-slate-500">
-                  {caseData.county} • Next session:{" "}
+                  {caseData.county} • Case next session (note):{" "}
                   {formatDate(caseData.nextSessionDate)}
                 </p>
               </div>
@@ -363,8 +368,8 @@ export default function SessionDetailPage() {
           <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-4 text-xs text-slate-500 shadow-sm">
             <p className="font-medium mb-1 text-slate-400">Tip</p>
             <p>
-              From here you can quickly mark sessions as completed after they
-              finish, so your billing module always has up-to-date hours.
+              Mark sessions completed when finished. If you bill by time, this
+              helps you reference completed work when preparing invoices.
             </p>
           </div>
         </div>
