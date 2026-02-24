@@ -23,6 +23,7 @@ function mapRowToCase(row: any): MediationCase {
     parties: row.parties,
     county: row.county,
     status: row.status as CaseStatus,
+    // NOTE: This DB field is legacy metadata. We will override it in GET with sessions-derived truth.
     nextSessionDate: row.next_session_date ?? null,
     notes: row.notes ?? null,
   };
@@ -41,7 +42,6 @@ async function requireAuthedSupabase() {
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
   if (!supabaseUrl || !supabaseAnonKey) {
-    // Misconfigured server env
     return {
       ok: false as const,
       res: NextResponse.json(
@@ -57,9 +57,6 @@ async function requireAuthedSupabase() {
         return cookieStore.getAll();
       },
       setAll(cookiesToSet) {
-        // In Route Handlers, cookies can be set on the response,
-        // but auth.getUser() typically only needs reads.
-        // We still implement setAll for correctness.
         for (const { name, value, options } of cookiesToSet) {
           cookieStore.set(name, value, options);
         }
@@ -86,19 +83,57 @@ export async function GET(_req: NextRequest) {
 
   const { supabase, userEmail } = auth;
 
-  const { data, error } = await supabase
+  // 1) Load cases (user-scoped)
+  const { data: caseRows, error: casesError } = await supabase
     .from("cases")
     .select("*")
     .eq("user_email", userEmail)
     .order("created_at", { ascending: false });
 
-  if (error) {
-    console.error("Supabase GET /api/cases error:", error);
+  if (casesError) {
+    console.error("Supabase GET /api/cases error:", casesError);
     return NextResponse.json({ error: "Failed to load cases" }, { status: 500 });
   }
 
-  // IMPORTANT: no seeding in production.
-  const cases = (data ?? []).map(mapRowToCase);
+  // 2) Load upcoming, non-completed sessions (user-scoped) and compute earliest per case_id
+  //    Truth rule: next session comes from sessions table, not cases.next_session_date metadata.
+  const nowIso = new Date().toISOString();
+
+  const { data: sessionRows, error: sessionsError } = await supabase
+    .from("sessions")
+    .select("case_id,date,completed")
+    .eq("user_email", userEmail)
+    .eq("completed", false)
+    .gt("date", nowIso)
+    .order("date", { ascending: true });
+
+  // Fail-soft per your constraint: if sessions query fails, we degrade to "—" (null), not crash.
+  const nextByCaseId: Record<string, string> = {};
+  if (sessionsError) {
+    console.error("Supabase GET /api/cases (sessions lookup) error:", sessionsError);
+  } else {
+    for (const s of sessionRows ?? []) {
+      const caseId = String((s as any).case_id ?? "").trim();
+      const date = (s as any).date as string | undefined;
+
+      if (!caseId || !date) continue;
+
+      // Because rows are ordered ascending by date, first seen per case is the earliest upcoming session.
+      if (!nextByCaseId[caseId]) {
+        nextByCaseId[caseId] = date;
+      }
+    }
+  }
+
+  // 3) Return cases with nextSessionDate overridden by sessions-derived value
+  const cases = (caseRows ?? []).map((row) => {
+    const c = mapRowToCase(row);
+    return {
+      ...c,
+      nextSessionDate: nextByCaseId[c.id] ?? null,
+    };
+  });
+
   return NextResponse.json(cases);
 }
 
@@ -121,6 +156,7 @@ export async function POST(req: NextRequest) {
   const county = String(body.county ?? "").trim();
   const status: CaseStatus = (body.status as CaseStatus) || "Open";
 
+  // Legacy metadata; kept for compatibility, but NOT used for /cases truth display.
   const nextSessionDate =
     body.nextSessionDate && String(body.nextSessionDate).trim()
       ? String(body.nextSessionDate)
