@@ -1,8 +1,19 @@
 import { DashboardGreeting } from "@/components/dashboard/DashboardGreeting";
 import { SessionsOverview } from "@/components/dashboard/SessionsOverview";
 import { TodayPanel } from "@/components/dashboard/TodayPanel";
+import { requireAuthedSupabase } from "@/lib/authServer";
 
 export const dynamic = "force-dynamic";
+
+type SessionRow = {
+  id: string;
+  user_email: string;
+  case_id: string;
+  date: string;
+  duration_hours: number | null;
+  notes: string | null;
+  completed: boolean;
+};
 
 type MediationSession = {
   id: string;
@@ -13,21 +24,15 @@ type MediationSession = {
   notes?: string | null;
 };
 
-type MediationCase = {
-  id: string;
-  status?: string | null;
-};
-
-type InvoiceStatus = "Draft" | "Sent" | "For county report";
-
-type Invoice = {
-  id: string;
-  status: InvoiceStatus;
-};
-
-async function safeJson<T>(res: Response): Promise<T> {
-  const text = await res.text();
-  return text ? (JSON.parse(text) as T) : (undefined as unknown as T);
+function mapRowToSession(row: SessionRow): MediationSession {
+  return {
+    id: row.id,
+    caseId: row.case_id,
+    date: row.date,
+    completed: Boolean(row.completed),
+    durationHours: Number(row.duration_hours ?? 0),
+    notes: row.notes ?? null,
+  };
 }
 
 function parseMillis(iso?: string | null): number | null {
@@ -45,50 +50,55 @@ export default async function DashboardPage() {
   let upcomingSessions: MediationSession[] = [];
 
   try {
-    const [sessionsRes, casesRes, invoicesRes] = await Promise.all([
-      fetch("/api/sessions", { cache: "no-store" }),
-      fetch("/api/cases", { cache: "no-store" }),
-      fetch("/api/invoices", { cache: "no-store" }),
-    ]);
+    const auth = await requireAuthedSupabase();
+    if (auth.ok) {
+      const { supabase, userEmail } = auth;
 
-    const nowMs = Date.now();
+      const nowIso = new Date().toISOString();
+      const nowMs = Date.now();
 
-    // Sessions → Upcoming sessions (future + not completed), date-safe
-    if (sessionsRes.ok) {
-      const sessions = (await safeJson<MediationSession[]>(sessionsRes)) ?? [];
+      // 1) Upcoming sessions (future + not completed)
+      const { data: sessionsData } = await supabase
+        .from("sessions")
+        .select("id,user_email,case_id,date,duration_hours,notes,completed")
+        .eq("user_email", userEmail)
+        .eq("completed", false)
+        .order("date", { ascending: true });
 
-      const futureNotCompleted = sessions
+      const sessions = (sessionsData ?? [])
+        .map(mapRowToSession)
         .filter((s) => {
-          const notCompleted = !s.completed;
           const ms = parseMillis(s.date);
-          const hasFutureDate = ms !== null && ms > nowMs;
-          return notCompleted && hasFutureDate;
-        })
-        .sort((a, b) => {
-          const am = parseMillis(a.date) ?? 0;
-          const bm = parseMillis(b.date) ?? 0;
-          return am - bm;
+          return ms !== null && ms > nowMs;
         });
 
-      upcomingSessions = futureNotCompleted.slice(0, 6);
-      upcomingSessionsCount = futureNotCompleted.length;
-    }
+      upcomingSessions = sessions.slice(0, 6);
+      upcomingSessionsCount = sessions.length;
 
-    // Cases → New inquiries
-    if (casesRes.ok) {
-      const cases = (await safeJson<MediationCase[]>(casesRes)) ?? [];
-
+      // 2) New inquiries (truth rule: status === "Open")
       /**
        * Truth rule:
        * We treat cases with status === "Open" as "New inquiries".
        */
-      newInquiriesCount = cases.filter((c) => c.status === "Open").length;
-    }
+      const { count: openCasesCount } = await supabase
+        .from("cases")
+        .select("id", { count: "exact", head: true })
+        .eq("user_email", userEmail)
+        .eq("status", "Open");
 
-    // Invoices → Draft invoices
-    if (invoicesRes.ok) {
-      const invoices = (await safeJson<Invoice[]>(invoicesRes)) ?? [];
-      draftInvoicesCount = invoices.filter((i) => i.status === "Draft").length;
+      newInquiriesCount = Number(openCasesCount ?? 0);
+
+      // 3) Draft invoices (status === "Draft")
+      const { count: draftCount } = await supabase
+        .from("invoices")
+        .select("id", { count: "exact", head: true })
+        .eq("user_email", userEmail)
+        .eq("status", "Draft");
+
+      draftInvoicesCount = Number(draftCount ?? 0);
+
+      // (nowIso kept in case you want it later)
+      void nowIso;
     }
   } catch {
     // Swallow errors and render zeros/empty state (keeps dashboard stable)
