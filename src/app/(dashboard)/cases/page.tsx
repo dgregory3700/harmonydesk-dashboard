@@ -1,10 +1,12 @@
+// src/app/(dashboard)/cases/page.tsx
+
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
-type CaseStatus = "Open" | "Upcoming" | "Closed";
+type CaseStatus = "Active" | "Closed";
 
 type MediationCase = {
   id: string;
@@ -15,6 +17,7 @@ type MediationCase = {
   status: CaseStatus;
   nextSessionDate: string | null;
   notes: string | null;
+  archivedAt?: string | null;
 };
 
 export default function CasesPage() {
@@ -24,30 +27,33 @@ export default function CasesPage() {
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [invoiceCreateError, setInvoiceCreateError] = useState<string | null>(null);
+
+  const [invoiceCreateError, setInvoiceCreateError] = useState<string | null>(
+    null
+  );
+  const [archiveError, setArchiveError] = useState<string | null>(null);
+
+  async function loadCases() {
+    try {
+      setLoading(true);
+      setError(null);
+
+      const res = await fetch("/api/cases", { cache: "no-store" });
+      if (!res.ok) throw new Error("Failed to load cases");
+
+      const data = (await res.json()) as MediationCase[];
+      setCases(data);
+    } catch (err: any) {
+      console.error("Error loading cases:", err);
+      setError(err?.message ?? "Failed to load cases");
+    } finally {
+      setLoading(false);
+    }
+  }
 
   useEffect(() => {
-    async function loadCases() {
-      try {
-        setLoading(true);
-        setError(null);
-
-        const res = await fetch("/api/cases");
-        if (!res.ok) {
-          throw new Error("Failed to load cases");
-        }
-
-        const data = (await res.json()) as MediationCase[];
-        setCases(data);
-      } catch (err: any) {
-        console.error("Error loading cases:", err);
-        setError(err?.message ?? "Failed to load cases");
-      } finally {
-        setLoading(false);
-      }
-    }
-
     loadCases();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const filteredCases = useMemo(() => {
@@ -63,7 +69,9 @@ export default function CasesPage() {
         c.parties +
         " " +
         c.county
-      ).toLowerCase();
+      )
+        .toLowerCase()
+        .trim();
 
       const matchesSearch = haystack.includes(search.toLowerCase().trim());
 
@@ -71,14 +79,13 @@ export default function CasesPage() {
     });
   }, [cases, statusFilter, search]);
 
-  const openCount = cases.filter((c) => c.status === "Open").length;
-  const upcomingCount = cases.filter((c) => c.status === "Upcoming").length;
+  const activeCount = cases.filter((c) => c.status === "Active").length;
   const closedCount = cases.filter((c) => c.status === "Closed").length;
 
   async function handleCreateInvoice(c: MediationCase) {
     try {
       setInvoiceCreateError(null);
-      
+
       const res = await fetch("/api/invoices", {
         method: "POST",
         headers: {
@@ -94,7 +101,7 @@ export default function CasesPage() {
       });
 
       if (!res.ok) {
-        const data = await res.json();
+        const data = await res.json().catch(() => ({}));
         throw new Error(data.error || "Failed to create invoice");
       }
 
@@ -105,18 +112,52 @@ export default function CasesPage() {
     }
   }
 
+  async function handleArchiveCase(c: MediationCase) {
+    if (c.status !== "Closed") return;
+
+    const ok = window.confirm(
+      `Archive this case?\n\nIt will be hidden from your Cases list, but sessions, invoices, and messages remain intact.`
+    );
+    if (!ok) return;
+
+    try {
+      setArchiveError(null);
+
+      const res = await fetch(`/api/cases/${encodeURIComponent(c.id)}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ archive: true }),
+      });
+
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(body?.error || "Failed to archive case");
+      }
+
+      // Since /api/cases excludes archived_at by default, reload for deterministic UI.
+      await loadCases();
+    } catch (err: any) {
+      console.error("Error archiving case:", err);
+      setArchiveError(err?.message ?? "Failed to archive case");
+    }
+  }
+
   function formatDate(value?: string | null) {
     if (!value) return "—";
     const d = new Date(value);
-    if (Number.isNaN(d.getTime())) {
-      // If it's not a real ISO date, just show the raw string
-      return value;
-    }
+    if (Number.isNaN(d.getTime())) return value;
     return d.toLocaleDateString("en-US", {
       month: "short",
       day: "numeric",
       year: "numeric",
     });
+  }
+
+  function statusBadgeClasses(status: CaseStatus) {
+    if (status === "Active") {
+      return "border-amber-500/20 bg-amber-500/10 text-amber-400";
+    }
+    return "border-emerald-500/20 bg-emerald-500/10 text-emerald-400";
   }
 
   return (
@@ -128,7 +169,8 @@ export default function CasesPage() {
             Cases
           </h1>
           <p className="text-sm text-slate-400">
-            Track active mediations, upcoming sessions, and closed matters.
+            Track active and closed mediations. “Upcoming” is session-based
+            (Calendar), not a case status.
           </p>
         </div>
 
@@ -141,36 +183,24 @@ export default function CasesPage() {
       </div>
 
       {/* Overview stats */}
-      <div className="grid gap-4 md:grid-cols-3">
+      <div className="grid gap-4 md:grid-cols-2">
         <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-4 shadow-sm">
-          <p className="text-xs font-medium text-slate-400">Open cases</p>
+          <p className="text-xs font-medium text-slate-400">Active cases</p>
           <p className="mt-2 text-2xl font-semibold text-slate-100">
-            {openCount}
+            {activeCount}
           </p>
           <p className="mt-1 text-xs text-slate-500">
-            Currently in progress.
+            Current work in progress.
           </p>
         </div>
 
         <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-4 shadow-sm">
-          <p className="text-xs font-medium text-slate-400">
-            Upcoming sessions
-          </p>
-          <p className="mt-2 text-2xl font-semibold text-slate-100">
-            {upcomingCount}
-          </p>
-          <p className="mt-1 text-xs text-slate-500">
-            Sessions with a scheduled next date.
-          </p>
-        </div>
-
-        <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-4 shadow-sm">
-          <p className="text-xs font-medium text-slate-400">Closed matters</p>
+          <p className="text-xs font-medium text-slate-400">Closed cases</p>
           <p className="mt-2 text-2xl font-semibold text-slate-100">
             {closedCount}
           </p>
           <p className="mt-1 text-xs text-slate-500">
-            Completed cases with signed agreements.
+            Finished matters. Archive to keep your list clean.
           </p>
         </div>
       </div>
@@ -180,7 +210,7 @@ export default function CasesPage() {
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-xs font-medium text-slate-400">Status:</span>
 
-          {["All", "Open", "Upcoming", "Closed"].map((status) => (
+          {["All", "Active", "Closed"].map((status) => (
             <button
               key={status}
               type="button"
@@ -214,6 +244,12 @@ export default function CasesPage() {
         {invoiceCreateError && (
           <div className="mb-3 rounded-md border border-red-500/20 bg-red-500/10 p-3 text-sm text-red-400">
             {invoiceCreateError}
+          </div>
+        )}
+
+        {archiveError && (
+          <div className="mb-3 rounded-md border border-red-500/20 bg-red-500/10 p-3 text-sm text-red-400">
+            {archiveError}
           </div>
         )}
 
@@ -253,13 +289,9 @@ export default function CasesPage() {
                 <div className="flex flex-col items-start gap-2 text-xs md:items-end">
                   <div className="flex items-center gap-2">
                     <span
-                      className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium border ${
-                        c.status === "Open"
-                          ? "border-amber-500/20 bg-amber-500/10 text-amber-400"
-                          : c.status === "Upcoming"
-                          ? "border-sky-500/20 bg-sky-500/10 text-sky-400"
-                          : "border-emerald-500/20 bg-emerald-500/10 text-emerald-400"
-                      }`}
+                      className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium border ${statusBadgeClasses(
+                        c.status
+                      )}`}
                     >
                       {c.status}
                     </span>
@@ -269,13 +301,14 @@ export default function CasesPage() {
                     </span>
                   </div>
 
-                  <div className="flex gap-2">
+                  <div className="flex flex-wrap gap-2">
                     <Link
                       href={`/cases/${c.id}`}
                       className="rounded-md border border-slate-700 bg-slate-800 px-3 py-1 text-xs font-medium text-slate-300 hover:bg-slate-700 hover:text-white transition-colors"
                     >
                       View case file
                     </Link>
+
                     <button
                       type="button"
                       className="rounded-md border border-slate-700 bg-transparent px-3 py-1 text-xs font-medium text-slate-400 hover:bg-slate-800 hover:text-slate-200 transition-colors"
@@ -283,6 +316,16 @@ export default function CasesPage() {
                     >
                       Create invoice
                     </button>
+
+                    {c.status === "Closed" && (
+                      <button
+                        type="button"
+                        className="rounded-md border border-slate-700 bg-transparent px-3 py-1 text-xs font-medium text-slate-400 hover:bg-slate-800 hover:text-slate-200 transition-colors"
+                        onClick={() => handleArchiveCase(c)}
+                      >
+                        Archive
+                      </button>
+                    )}
                   </div>
                 </div>
               </div>
