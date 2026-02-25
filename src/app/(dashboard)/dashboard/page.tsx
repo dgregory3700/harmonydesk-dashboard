@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { DashboardGreeting } from "@/components/dashboard/DashboardGreeting";
 import { SessionsOverview } from "@/components/dashboard/SessionsOverview";
 import { TodayPanel } from "@/components/dashboard/TodayPanel";
@@ -15,6 +16,8 @@ type SessionRow = {
   completed: boolean;
 };
 
+type CaseStatus = "Open" | "Upcoming" | "Closed" | string;
+
 type MediationSession = {
   id: string;
   caseId: string;
@@ -22,6 +25,7 @@ type MediationSession = {
   completed: boolean;
   durationHours?: number;
   notes?: string | null;
+  caseLabel?: string;
 };
 
 function mapRowToSession(row: SessionRow): MediationSession {
@@ -41,13 +45,45 @@ function parseMillis(iso?: string | null): number | null {
   return Number.isFinite(ms) ? ms : null;
 }
 
-type CaseStatus = "Open" | "Upcoming" | "Closed";
+function buildCaseLabel(row: any): string | null {
+  if (!row) return null;
+
+  const caseNumber =
+    row.case_number ??
+    row.caseNumber ??
+    row.case_no ??
+    row.caseNo ??
+    row.number ??
+    null;
+
+  const title =
+    row.title ?? row.matter ?? row.case_title ?? row.caseTitle ?? null;
+
+  const parties =
+    row.parties ?? row.party_names ?? row.partyNames ?? null;
+
+  const parts: string[] = [];
+
+  if (caseNumber && typeof caseNumber === "string" && caseNumber.trim()) {
+    parts.push(caseNumber.trim());
+  }
+
+  if (title && typeof title === "string" && title.trim()) {
+    parts.push(title.trim());
+  } else if (parties && typeof parties === "string" && parties.trim()) {
+    parts.push(parties.trim());
+  }
+
+  if (parts.length === 0) return null;
+  return parts.join(" • ");
+}
 
 export default async function DashboardPage() {
-  // Default values if anything fails (stability > perfection)
+  // fail-soft defaults
   let upcomingSessionsCount = 0;
-  let newInquiriesCount = 0;
+  let completedSessionsCount = 0;
   let draftInvoicesCount = 0;
+  let unsentEmailsCount = 0;
 
   let upcomingSessions: MediationSession[] = [];
 
@@ -61,7 +97,7 @@ export default async function DashboardPage() {
 
       /**
        * 1) Upcoming sessions (future + not completed)
-       * Product truth: sessions from CLOSED cases should not be counted/displayed as upcoming.
+       * Truth: exclude sessions whose parent case is Closed.
        */
       const { data: sessionsData } = await supabase
         .from("sessions")
@@ -73,14 +109,15 @@ export default async function DashboardPage() {
 
       const rawUpcoming = (sessionsData ?? [])
         .map(mapRowToSession)
-        // keep the defensive parse in case some rows have non-ISO / unexpected values
         .filter((s) => {
           const ms = parseMillis(s.date);
           return ms !== null && ms > nowMs;
         });
 
-      // If we have upcoming sessions, fetch their cases and exclude CLOSED cases.
       let filteredUpcoming = rawUpcoming;
+
+      const caseLabelById = new Map<string, string>();
+      const statusById = new Map<string, CaseStatus>();
 
       if (rawUpcoming.length > 0) {
         const caseIds = Array.from(
@@ -88,24 +125,47 @@ export default async function DashboardPage() {
         );
 
         if (caseIds.length > 0) {
-          const { data: casesData, error: casesErr } = await supabase
+          let casesData: any[] | null = null;
+
+          const rich = await supabase
             .from("cases")
-            .select("id,status")
+            .select("id,status,case_number,title,matter,parties")
             .eq("user_email", userEmail)
             .in("id", caseIds);
 
-          if (casesErr) {
-            // fail-soft: if case lookup fails, keep sessions-based upcoming (better than blanking dashboard)
-            console.error("Dashboard cases lookup error:", casesErr);
+          if (rich.error) {
+            console.error("Dashboard cases (rich) lookup error:", rich.error);
+
+            const minimal = await supabase
+              .from("cases")
+              .select("id,status")
+              .eq("user_email", userEmail)
+              .in("id", caseIds);
+
+            if (minimal.error) {
+              console.error(
+                "Dashboard cases (minimal) lookup error:",
+                minimal.error
+              );
+            } else {
+              casesData = minimal.data ?? null;
+            }
           } else {
-            const statusById = new Map<string, CaseStatus>();
-            for (const row of casesData ?? []) {
-              statusById.set(String((row as any).id), (row as any).status);
+            casesData = rich.data ?? null;
+          }
+
+          if (casesData) {
+            for (const row of casesData) {
+              const id = String((row as any).id);
+              const st = (row as any).status as CaseStatus | undefined;
+              if (st) statusById.set(id, st);
+
+              const label = buildCaseLabel(row);
+              if (label) caseLabelById.set(id, label);
             }
 
             filteredUpcoming = rawUpcoming.filter((s) => {
               const st = statusById.get(s.caseId);
-              // If status is missing, fail-soft and allow it (avoids hiding legit sessions due to mapping issues)
               if (!st) return true;
               return st !== "Closed";
             });
@@ -113,22 +173,35 @@ export default async function DashboardPage() {
         }
       }
 
-      upcomingSessions = filteredUpcoming.slice(0, 6);
-      upcomingSessionsCount = filteredUpcoming.length;
+      const enriched = filteredUpcoming.map((s) => ({
+        ...s,
+        caseLabel: caseLabelById.get(s.caseId) ?? undefined,
+      }));
+
+      upcomingSessions = enriched.slice(0, 6);
+      upcomingSessionsCount = enriched.length;
 
       /**
-       * 2) New inquiries (truth rule: status === "Open")
+       * 2) Completed sessions
+       * Truth: sessions.completed = true.
+       * (We also bound to date <= now to avoid future sessions accidentally marked completed.)
        */
-      const { count: openCasesCount } = await supabase
-        .from("cases")
+      const { count: completedCount, error: completedErr } = await supabase
+        .from("sessions")
         .select("id", { count: "exact", head: true })
         .eq("user_email", userEmail)
-        .eq("status", "Open");
+        .eq("completed", true)
+        .lte("date", nowIso);
 
-      newInquiriesCount = Number(openCasesCount ?? 0);
+      if (completedErr) {
+        console.error("Dashboard completed sessions count error:", completedErr);
+        completedSessionsCount = 0;
+      } else {
+        completedSessionsCount = Number(completedCount ?? 0);
+      }
 
       /**
-       * 3) Draft invoices (status === "Draft")
+       * 3) Draft invoices
        */
       const { count: draftCount } = await supabase
         .from("invoices")
@@ -137,44 +210,89 @@ export default async function DashboardPage() {
         .eq("status", "Draft");
 
       draftInvoicesCount = Number(draftCount ?? 0);
+
+      /**
+       * 4) Unsent emails (Messages)
+       * Truth: messages pending or failed delivery.
+       */
+      const { count: unsentCount, error: unsentErr } = await supabase
+        .from("messages")
+        .select("id", { count: "exact", head: true })
+        .eq("user_email", userEmail)
+        .in("email_status", ["pending", "failed"]);
+
+      if (unsentErr) {
+        console.error("Dashboard unsent emails count error:", unsentErr);
+        unsentEmailsCount = 0;
+      } else {
+        unsentEmailsCount = Number(unsentCount ?? 0);
+      }
     }
   } catch {
-    // Swallow errors and render zeros/empty state (keeps dashboard stable)
+    // keep fail-soft zeros
   }
 
-  const stats = [
-    { label: "Upcoming sessions", value: upcomingSessionsCount },
-    { label: "New inquiries", value: newInquiriesCount },
-    { label: "Draft invoices", value: draftInvoicesCount },
+  const stats: Array<{
+    label: string;
+    value: number;
+    href: string;
+    hint: string;
+  }> = [
+    {
+      label: "Upcoming sessions",
+      value: upcomingSessionsCount,
+      href: "/calendar",
+      hint: "View schedule",
+    },
+    {
+      label: "Completed sessions",
+      value: completedSessionsCount,
+      href: "/calendar",
+      hint: "Review history",
+    },
+    {
+      label: "Draft invoices",
+      value: draftInvoicesCount,
+      href: "/billing",
+      hint: "Prepare & send",
+    },
+    {
+      label: "Unsent emails",
+      value: unsentEmailsCount,
+      href: "/messages",
+      hint: "Fix & resend",
+    },
   ];
 
   return (
     <div className="space-y-6">
       <DashboardGreeting />
 
-      {/* Top stats row */}
-      <div className="grid gap-4 md:grid-cols-3">
+      {/* Top stats row (sessions-first, clickable) */}
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         {stats.map((s) => (
-          <div
+          <Link
             key={s.label}
-            className="rounded-2xl border border-slate-800 bg-slate-900/50 px-6 py-4 shadow-sm"
+            href={s.href}
+            className="group rounded-2xl border border-slate-800 bg-slate-900/50 px-6 py-4 shadow-sm transition hover:border-slate-700 hover:bg-slate-900/70"
           >
-            <p className="text-xs font-medium text-slate-400">{s.label}</p>
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-xs font-medium text-slate-400">{s.label}</p>
+              <p className="text-[11px] text-slate-500 group-hover:text-slate-300">
+                {s.hint} →
+              </p>
+            </div>
+
             <p className="mt-2 text-2xl font-semibold text-slate-100">
               {s.value}
             </p>
-          </div>
+          </Link>
         ))}
       </div>
 
-      {/* Main content row: sessions + today panel */}
       <div className="grid gap-4 lg:grid-cols-[2fr,1fr]">
         <SessionsOverview sessions={upcomingSessions} />
-        <TodayPanel
-          upcomingSessionsCount={upcomingSessionsCount}
-          newInquiriesCount={newInquiriesCount}
-          draftInvoicesCount={draftInvoicesCount}
-        />
+        <TodayPanel />
       </div>
     </div>
   );
