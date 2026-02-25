@@ -25,6 +25,8 @@ type MediationSession = {
   completed: boolean;
   durationHours?: number;
   notes?: string | null;
+
+  // Enriched display fields (fail-soft)
   caseLabel?: string;
 };
 
@@ -45,34 +47,50 @@ function parseMillis(iso?: string | null): number | null {
   return Number.isFinite(ms) ? ms : null;
 }
 
+function pickString(row: any, keys: string[]): string | null {
+  for (const k of keys) {
+    const v = row?.[k];
+    if (typeof v === "string" && v.trim()) return v.trim();
+  }
+  return null;
+}
+
 function buildCaseLabel(row: any): string | null {
   if (!row) return null;
 
-  const caseNumber =
-    row.case_number ??
-    row.caseNumber ??
-    row.case_no ??
-    row.caseNo ??
-    row.number ??
-    null;
+  // Try many likely column names (schema-agnostic)
+  const caseNumber = pickString(row, [
+    "case_number",
+    "caseNumber",
+    "case_no",
+    "caseNo",
+    "number",
+    "case_ref",
+    "caseRef",
+  ]);
 
-  const title =
-    row.title ?? row.matter ?? row.case_title ?? row.caseTitle ?? null;
+  const matterOrTitle = pickString(row, [
+    "matter",
+    "title",
+    "case_title",
+    "caseTitle",
+    "description",
+  ]);
 
-  const parties =
-    row.parties ?? row.party_names ?? row.partyNames ?? null;
+  const parties = pickString(row, [
+    "parties",
+    "party_names",
+    "partyNames",
+    "participants",
+  ]);
 
   const parts: string[] = [];
 
-  if (caseNumber && typeof caseNumber === "string" && caseNumber.trim()) {
-    parts.push(caseNumber.trim());
-  }
+  if (caseNumber) parts.push(caseNumber);
 
-  if (title && typeof title === "string" && title.trim()) {
-    parts.push(title.trim());
-  } else if (parties && typeof parties === "string" && parties.trim()) {
-    parts.push(parties.trim());
-  }
+  // Prefer matter/title; fall back to parties
+  if (matterOrTitle) parts.push(matterOrTitle);
+  else if (parties) parts.push(parties);
 
   if (parts.length === 0) return null;
   return parts.join(" • ");
@@ -81,9 +99,9 @@ function buildCaseLabel(row: any): string | null {
 export default async function DashboardPage() {
   // fail-soft defaults
   let upcomingSessionsCount = 0;
-  let completedSessionsCount = 0;
   let draftInvoicesCount = 0;
   let unsentEmailsCount = 0;
+  let caseFilesCount = 0;
 
   let upcomingSessions: MediationSession[] = [];
 
@@ -125,39 +143,23 @@ export default async function DashboardPage() {
         );
 
         if (caseIds.length > 0) {
-          let casesData: any[] | null = null;
-
-          const rich = await supabase
+          /**
+           * IMPORTANT:
+           * Use select("*") so we never fail due to unknown/missing optional columns.
+           * This fixes the UUID-only display issue.
+           */
+          const { data: casesData, error: casesErr } = await supabase
             .from("cases")
-            .select("id,status,case_number,title,matter,parties")
+            .select("*")
             .eq("user_email", userEmail)
             .in("id", caseIds);
 
-          if (rich.error) {
-            console.error("Dashboard cases (rich) lookup error:", rich.error);
-
-            const minimal = await supabase
-              .from("cases")
-              .select("id,status")
-              .eq("user_email", userEmail)
-              .in("id", caseIds);
-
-            if (minimal.error) {
-              console.error(
-                "Dashboard cases (minimal) lookup error:",
-                minimal.error
-              );
-            } else {
-              casesData = minimal.data ?? null;
-            }
+          if (casesErr) {
+            console.error("Dashboard cases lookup error:", casesErr);
           } else {
-            casesData = rich.data ?? null;
-          }
-
-          if (casesData) {
-            for (const row of casesData) {
+            for (const row of casesData ?? []) {
               const id = String((row as any).id);
-              const st = (row as any).status as CaseStatus | undefined;
+              const st = ((row as any).status ?? "") as CaseStatus;
               if (st) statusById.set(id, st);
 
               const label = buildCaseLabel(row);
@@ -166,7 +168,7 @@ export default async function DashboardPage() {
 
             filteredUpcoming = rawUpcoming.filter((s) => {
               const st = statusById.get(s.caseId);
-              if (!st) return true;
+              if (!st) return true; // fail-soft
               return st !== "Closed";
             });
           }
@@ -182,26 +184,7 @@ export default async function DashboardPage() {
       upcomingSessionsCount = enriched.length;
 
       /**
-       * 2) Completed sessions
-       * Truth: sessions.completed = true.
-       * (We also bound to date <= now to avoid future sessions accidentally marked completed.)
-       */
-      const { count: completedCount, error: completedErr } = await supabase
-        .from("sessions")
-        .select("id", { count: "exact", head: true })
-        .eq("user_email", userEmail)
-        .eq("completed", true)
-        .lte("date", nowIso);
-
-      if (completedErr) {
-        console.error("Dashboard completed sessions count error:", completedErr);
-        completedSessionsCount = 0;
-      } else {
-        completedSessionsCount = Number(completedCount ?? 0);
-      }
-
-      /**
-       * 3) Draft invoices
+       * 2) Draft invoices
        */
       const { count: draftCount } = await supabase
         .from("invoices")
@@ -212,8 +195,7 @@ export default async function DashboardPage() {
       draftInvoicesCount = Number(draftCount ?? 0);
 
       /**
-       * 4) Unsent emails (Messages)
-       * Truth: messages pending or failed delivery.
+       * 3) Unsent emails (pending/failed)
        */
       const { count: unsentCount, error: unsentErr } = await supabase
         .from("messages")
@@ -227,6 +209,17 @@ export default async function DashboardPage() {
       } else {
         unsentEmailsCount = Number(unsentCount ?? 0);
       }
+
+      /**
+       * 4) Case files count (reference)
+       * This is not “open”; it’s just “case files”.
+       */
+      const { count: casesCount } = await supabase
+        .from("cases")
+        .select("id", { count: "exact", head: true })
+        .eq("user_email", userEmail);
+
+      caseFilesCount = Number(casesCount ?? 0);
     }
   } catch {
     // keep fail-soft zeros
@@ -245,12 +238,6 @@ export default async function DashboardPage() {
       hint: "View schedule",
     },
     {
-      label: "Completed sessions",
-      value: completedSessionsCount,
-      href: "/calendar",
-      hint: "Review history",
-    },
-    {
       label: "Draft invoices",
       value: draftInvoicesCount,
       href: "/billing",
@@ -262,13 +249,18 @@ export default async function DashboardPage() {
       href: "/messages",
       hint: "Fix & resend",
     },
+    {
+      label: "Case files",
+      value: caseFilesCount,
+      href: "/cases",
+      hint: "Reference",
+    },
   ];
 
   return (
     <div className="space-y-6">
       <DashboardGreeting />
 
-      {/* Top stats row (sessions-first, clickable) */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         {stats.map((s) => (
           <Link
