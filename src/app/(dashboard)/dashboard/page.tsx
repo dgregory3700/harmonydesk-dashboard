@@ -25,8 +25,6 @@ type MediationSession = {
   completed: boolean;
   durationHours?: number;
   notes?: string | null;
-
-  // Enriched display fields (fail-soft)
   caseLabel?: string;
 };
 
@@ -58,7 +56,6 @@ function pickString(row: any, keys: string[]): string | null {
 function buildCaseLabel(row: any): string | null {
   if (!row) return null;
 
-  // Try many likely column names (schema-agnostic)
   const caseNumber = pickString(row, [
     "case_number",
     "caseNumber",
@@ -85,10 +82,7 @@ function buildCaseLabel(row: any): string | null {
   ]);
 
   const parts: string[] = [];
-
   if (caseNumber) parts.push(caseNumber);
-
-  // Prefer matter/title; fall back to parties
   if (matterOrTitle) parts.push(matterOrTitle);
   else if (parties) parts.push(parties);
 
@@ -96,12 +90,22 @@ function buildCaseLabel(row: any): string | null {
   return parts.join(" • ");
 }
 
+function startOfWeekUtc(d: Date) {
+  // Monday 00:00 UTC (stable regardless of server locale)
+  const date = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+  const day = date.getUTCDay(); // 0=Sun..6=Sat
+  const diff = (day === 0 ? -6 : 1 - day); // back to Monday
+  date.setUTCDate(date.getUTCDate() + diff);
+  date.setUTCHours(0, 0, 0, 0);
+  return date;
+}
+
 export default async function DashboardPage() {
   // fail-soft defaults
   let upcomingSessionsCount = 0;
   let draftInvoicesCount = 0;
   let unsentEmailsCount = 0;
-  let caseFilesCount = 0;
+  let thisWeekSessionsCount = 0;
 
   let upcomingSessions: MediationSession[] = [];
 
@@ -110,12 +114,13 @@ export default async function DashboardPage() {
     if (auth.ok) {
       const { supabase, userEmail } = auth;
 
-      const nowIso = new Date().toISOString();
+      const now = new Date();
+      const nowIso = now.toISOString();
       const nowMs = Date.now();
 
       /**
        * 1) Upcoming sessions (future + not completed)
-       * Truth: exclude sessions whose parent case is Closed.
+       * Exclude sessions whose parent case is Closed.
        */
       const { data: sessionsData } = await supabase
         .from("sessions")
@@ -143,11 +148,6 @@ export default async function DashboardPage() {
         );
 
         if (caseIds.length > 0) {
-          /**
-           * IMPORTANT:
-           * Use select("*") so we never fail due to unknown/missing optional columns.
-           * This fixes the UUID-only display issue.
-           */
           const { data: casesData, error: casesErr } = await supabase
             .from("cases")
             .select("*")
@@ -168,7 +168,7 @@ export default async function DashboardPage() {
 
             filteredUpcoming = rawUpcoming.filter((s) => {
               const st = statusById.get(s.caseId);
-              if (!st) return true; // fail-soft
+              if (!st) return true;
               return st !== "Closed";
             });
           }
@@ -211,15 +211,26 @@ export default async function DashboardPage() {
       }
 
       /**
-       * 4) Case files count (reference)
-       * This is not “open”; it’s just “case files”.
+       * 4) This week’s sessions (completed OR scheduled within this week window)
+       * Operational, non-inflating metric.
        */
-      const { count: casesCount } = await supabase
-        .from("cases")
-        .select("id", { count: "exact", head: true })
-        .eq("user_email", userEmail);
+      const weekStart = startOfWeekUtc(now);
+      const weekEnd = new Date(weekStart);
+      weekEnd.setUTCDate(weekEnd.getUTCDate() + 7);
 
-      caseFilesCount = Number(casesCount ?? 0);
+      const { count: weekCount, error: weekErr } = await supabase
+        .from("sessions")
+        .select("id", { count: "exact", head: true })
+        .eq("user_email", userEmail)
+        .gte("date", weekStart.toISOString())
+        .lt("date", weekEnd.toISOString());
+
+      if (weekErr) {
+        console.error("Dashboard this-week sessions count error:", weekErr);
+        thisWeekSessionsCount = 0;
+      } else {
+        thisWeekSessionsCount = Number(weekCount ?? 0);
+      }
     }
   } catch {
     // keep fail-soft zeros
@@ -238,6 +249,12 @@ export default async function DashboardPage() {
       hint: "View schedule",
     },
     {
+      label: "This week’s sessions",
+      value: thisWeekSessionsCount,
+      href: "/calendar",
+      hint: "Plan this week",
+    },
+    {
       label: "Draft invoices",
       value: draftInvoicesCount,
       href: "/billing",
@@ -248,12 +265,6 @@ export default async function DashboardPage() {
       value: unsentEmailsCount,
       href: "/messages",
       hint: "Fix & resend",
-    },
-    {
-      label: "Case files",
-      value: caseFilesCount,
-      href: "/cases",
-      hint: "Reference",
     },
   ];
 
