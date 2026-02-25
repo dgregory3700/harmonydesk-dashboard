@@ -1,10 +1,12 @@
+// src/app/(dashboard)/cases/[id]/page.tsx
+
 "use client";
 
 import { useEffect, useState, FormEvent } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 
-type CaseStatus = "Open" | "Upcoming" | "Closed";
+type CaseStatus = "Active" | "Closed";
 
 type MediationCase = {
   id: string;
@@ -15,6 +17,7 @@ type MediationCase = {
   status: CaseStatus;
   nextSessionDate: string | null;
   notes: string | null;
+  archivedAt?: string | null;
 };
 
 type MediationSession = {
@@ -55,10 +58,10 @@ function formatDate(value?: string | null) {
   });
 }
 
-// Updated for Dark Mode badges
+// Updated for Active/Closed badges
 function statusBadgeClasses(status: CaseStatus) {
-  if (status === "Open") return "border border-amber-500/20 bg-amber-500/10 text-amber-400";
-  if (status === "Upcoming") return "border border-sky-500/20 bg-sky-500/10 text-sky-400";
+  if (status === "Active")
+    return "border border-amber-500/20 bg-amber-500/10 text-amber-400";
   return "border border-emerald-500/20 bg-emerald-500/10 text-emerald-400";
 }
 
@@ -71,7 +74,7 @@ export default function CaseDetailPage() {
   const [loadingCase, setLoadingCase] = useState(true);
   const [caseError, setCaseError] = useState<string | null>(null);
 
-  const [localStatus, setLocalStatus] = useState<CaseStatus>("Open");
+  const [localStatus, setLocalStatus] = useState<CaseStatus>("Active");
   const [localNotes, setLocalNotes] = useState("");
   const [savingCase, setSavingCase] = useState(false);
   const [caseSaveError, setCaseSaveError] = useState<string | null>(null);
@@ -96,7 +99,7 @@ export default function CaseDetailPage() {
   const [newSessionError, setNewSessionError] = useState<string | null>(null);
 
   // Invoice-from-case state
-  const [invoiceRate, setInvoiceRate] = useState("200"); // will be overridden by Settings if present
+  const [invoiceRate, setInvoiceRate] = useState("200"); // overridden by Settings if present
   const [creatingInvoice, setCreatingInvoice] = useState(false);
   const [invoiceError, setInvoiceError] = useState<string | null>(null);
 
@@ -121,17 +124,20 @@ export default function CaseDetailPage() {
         setLoadingCase(true);
         setCaseError(null);
 
-        const res = await fetch(`/api/cases/${caseId}`);
+        const res = await fetch(`/api/cases/${caseId}`, { cache: "no-store" });
         if (!res.ok) {
-          if (res.status === 404) {
-            throw new Error("Case not found");
-          }
+          if (res.status === 404) throw new Error("Case not found");
           throw new Error("Failed to load case");
         }
 
         const data = (await res.json()) as MediationCase;
         setCaseData(data);
-        setLocalStatus(data.status);
+
+        // Defensive normalization: treat any legacy values as Active
+        const normalizedStatus: CaseStatus =
+          data.status === "Closed" ? "Closed" : "Active";
+
+        setLocalStatus(normalizedStatus);
         setLocalNotes(data.notes ?? "");
       } catch (err: any) {
         console.error("Error loading case:", err);
@@ -153,10 +159,10 @@ export default function CaseDetailPage() {
         setLoadingSessions(true);
         setSessionsError(null);
 
-        const res = await fetch(`/api/sessions?caseId=${caseId}`);
-        if (!res.ok) {
-          throw new Error("Failed to load sessions");
-        }
+        const res = await fetch(`/api/sessions?caseId=${caseId}`, {
+          cache: "no-store",
+        });
+        if (!res.ok) throw new Error("Failed to load sessions");
 
         const data = (await res.json()) as MediationSession[];
         setSessions(data);
@@ -180,10 +186,10 @@ export default function CaseDetailPage() {
         setLoadingMessages(true);
         setMessagesError(null);
 
-        const res = await fetch(`/api/messages?caseId=${caseId}`);
-        if (!res.ok) {
-          throw new Error("Failed to load messages");
-        }
+        const res = await fetch(`/api/messages?caseId=${caseId}`, {
+          cache: "no-store",
+        });
+        if (!res.ok) throw new Error("Failed to load messages");
 
         const data = (await res.json()) as MessageSummary[];
         setMessages(data);
@@ -205,10 +211,8 @@ export default function CaseDetailPage() {
         setSettingsLoading(true);
         setSettingsError(null);
 
-        const res = await fetch("/api/user-settings");
-        if (!res.ok) {
-          throw new Error("Failed to load settings");
-        }
+        const res = await fetch("/api/user-settings", { cache: "no-store" });
+        if (!res.ok) throw new Error("Failed to load settings");
 
         const data = await res.json();
         const parsed: UserSettings = {
@@ -228,7 +232,6 @@ export default function CaseDetailPage() {
 
         setSettings(parsed);
 
-        // Only apply defaults the first time we load settings
         if (!initializedFromSettings) {
           if (
             parsed.defaultHourlyRate != null &&
@@ -254,10 +257,11 @@ export default function CaseDetailPage() {
 
     loadSettings();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // we only want to run this once on mount for defaults
+  }, []);
 
   async function handleSaveCase() {
     if (!caseId) return;
+
     try {
       setSavingCase(true);
       setCaseSaveError(null);
@@ -273,20 +277,23 @@ export default function CaseDetailPage() {
       });
 
       if (!res.ok) {
-        throw new Error("Failed to update case");
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body?.error || "Failed to update case");
       }
 
       const updated = (await res.json()) as MediationCase;
-setCaseData(updated);
-setLocalStatus(updated.status);
-setLocalNotes(updated.notes ?? "");
-setCaseSaveSuccess(true);
 
-// Ensure server-rendered pages (like /dashboard) don't show stale cached data after mutations.
-router.refresh();
+      // Defensive normalization
+      const normalizedStatus: CaseStatus =
+        updated.status === "Closed" ? "Closed" : "Active";
 
-// Optional: warm the dashboard route so the next navigation pulls fresh output.
-router.prefetch("/dashboard");
+      setCaseData(updated);
+      setLocalStatus(normalizedStatus);
+      setLocalNotes(updated.notes ?? "");
+      setCaseSaveSuccess(true);
+
+      router.refresh();
+      router.prefetch("/dashboard");
     } catch (err: any) {
       console.error("Error saving case:", err);
       setCaseSaveError(err?.message ?? "Failed to save changes");
@@ -327,10 +334,8 @@ router.prefetch("/dashboard");
       }
 
       const created = (await res.json()) as MediationSession;
-      // Prepend new session to the list
       setSessions((prev) => [created, ...prev]);
 
-      // Reset form (but keep default duration from Settings if we have one)
       setNewSessionDate("");
       if (
         settings &&
@@ -378,7 +383,6 @@ router.prefetch("/dashboard");
         throw new Error(body?.error || "Failed to create invoice");
       }
 
-      // Redirect to Billing & Courts where the new invoice will be at the top
       router.push("/billing");
     } catch (err: any) {
       console.error("Error creating invoice from case:", err);
@@ -437,18 +441,14 @@ router.prefetch("/dashboard");
             <h1 className="text-2xl font-semibold tracking-tight text-slate-100">
               {caseData.matter}
             </h1>
-            <p className="text-sm text-slate-400">
-              Case ID: {caseData.caseNumber}
-            </p>
+            <p className="text-sm text-slate-400">Case ID: {caseData.caseNumber}</p>
             {settingsLoading && (
               <p className="mt-1 text-[11px] text-slate-500">
                 Loading your default billing settings…
               </p>
             )}
             {settingsError && (
-              <p className="mt-1 text-[11px] text-red-400">
-                {settingsError}
-              </p>
+              <p className="mt-1 text-[11px] text-red-400">{settingsError}</p>
             )}
           </div>
 
@@ -469,11 +469,13 @@ router.prefetch("/dashboard");
 
       {/* Main layout */}
       <div className="grid gap-4 md:grid-cols-3">
-        {/* Left column: case info, notes, sessions */}
+        {/* Left column */}
         <div className="md:col-span-2 space-y-4">
           {/* Case info */}
           <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-4 shadow-sm">
-            <h2 className="text-sm font-medium mb-2 text-slate-200">Case information</h2>
+            <h2 className="text-sm font-medium mb-2 text-slate-200">
+              Case information
+            </h2>
             <div className="grid gap-2 text-sm md:grid-cols-2">
               <div>
                 <p className="text-xs text-slate-500">Parties</p>
@@ -514,20 +516,18 @@ router.prefetch("/dashboard");
           {/* Session history */}
           <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-4 shadow-sm space-y-3">
             <div className="flex items-center justify-between">
-              <h2 className="text-sm font-medium text-slate-200">Session history</h2>
+              <h2 className="text-sm font-medium text-slate-200">
+                Session history
+              </h2>
               <span className="text-[11px] text-slate-500">
                 Past and upcoming sessions for this case.
               </span>
             </div>
 
             {loadingSessions ? (
-              <p className="text-sm text-slate-500">
-                Loading sessions…
-              </p>
+              <p className="text-sm text-slate-500">Loading sessions…</p>
             ) : sessionsError ? (
-              <p className="text-sm text-red-400">
-                {sessionsError}
-              </p>
+              <p className="text-sm text-red-400">{sessionsError}</p>
             ) : sessions.length === 0 ? (
               <p className="text-sm text-slate-500">
                 No sessions recorded yet. Add your first one below.
@@ -545,9 +545,7 @@ router.prefetch("/dashboard");
                         {s.durationHours !== 1 ? "s" : ""}
                       </p>
                       {s.notes && (
-                        <p className="text-slate-400 line-clamp-2">
-                          {s.notes}
-                        </p>
+                        <p className="text-slate-400 line-clamp-2">{s.notes}</p>
                       )}
                     </div>
                     <div className="flex items-center gap-2 md:items-start">
@@ -571,9 +569,7 @@ router.prefetch("/dashboard");
               onSubmit={handleCreateSession}
               className="mt-3 space-y-2 rounded-md border border-slate-700 bg-slate-950 p-3"
             >
-              <p className="text-[11px] font-medium text-slate-400">
-                Add session
-              </p>
+              <p className="text-[11px] font-medium text-slate-400">Add session</p>
 
               <div className="grid gap-2 md:grid-cols-2">
                 <div className="space-y-1">
@@ -599,20 +595,17 @@ router.prefetch("/dashboard");
                     onChange={(e) => setNewSessionDuration(e.target.value)}
                     className="w-full rounded-md border border-slate-700 bg-slate-900 px-2 py-1.5 text-xs text-slate-200 placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
                   />
-                  {settings &&
-                    settings.defaultSessionDuration != null && (
-                      <p className="mt-1 text-[11px] text-slate-500">
-                        Pre-filled from your default session duration in
-                        Settings. Adjust as needed before saving.
-                      </p>
-                    )}
+                  {settings && settings.defaultSessionDuration != null && (
+                    <p className="mt-1 text-[11px] text-slate-500">
+                      Pre-filled from your default session duration in Settings.
+                      Adjust as needed before saving.
+                    </p>
+                  )}
                 </div>
               </div>
 
               <div className="space-y-1">
-                <label className="block text-[11px] text-slate-500">
-                  Notes
-                </label>
+                <label className="block text-[11px] text-slate-500">Notes</label>
                 <textarea
                   value={newSessionNotes}
                   onChange={(e) => setNewSessionNotes(e.target.value)}
@@ -627,9 +620,7 @@ router.prefetch("/dashboard");
                   <input
                     type="checkbox"
                     checked={newSessionCompleted}
-                    onChange={(e) =>
-                      setNewSessionCompleted(e.target.checked)
-                    }
+                    onChange={(e) => setNewSessionCompleted(e.target.checked)}
                     className="h-3 w-3 rounded border border-slate-600 bg-slate-900 accent-sky-500"
                   />
                   Mark as completed
@@ -645,21 +636,18 @@ router.prefetch("/dashboard");
               </div>
 
               {newSessionError && (
-                <p className="text-[11px] text-red-400 mt-1">
-                  {newSessionError}
-                </p>
+                <p className="text-[11px] text-red-400 mt-1">{newSessionError}</p>
               )}
             </form>
           </div>
         </div>
 
-        {/* Right column: actions + messages panel + helper text */}
+        {/* Right column */}
         <div className="space-y-4">
           {/* Actions */}
           <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-4 shadow-sm">
             <h2 className="text-sm font-medium mb-3 text-slate-200">Actions</h2>
 
-            {/* Status selector */}
             <label className="mb-2 block text-xs font-medium text-slate-400">
               Case status
             </label>
@@ -668,8 +656,7 @@ router.prefetch("/dashboard");
               value={localStatus}
               onChange={(e) => setLocalStatus(e.target.value as CaseStatus)}
             >
-              <option value="Open">Open</option>
-              <option value="Upcoming">Upcoming</option>
+              <option value="Active">Active</option>
               <option value="Closed">Closed</option>
             </select>
 
@@ -683,14 +670,10 @@ router.prefetch("/dashboard");
             </button>
 
             {caseSaveError && (
-              <p className="mt-2 text-xs text-red-400">
-                {caseSaveError}
-              </p>
+              <p className="mt-2 text-xs text-red-400">{caseSaveError}</p>
             )}
             {caseSaveSuccess && !caseSaveError && (
-              <p className="mt-2 text-xs text-emerald-400">
-                Changes saved.
-              </p>
+              <p className="mt-2 text-xs text-emerald-400">Changes saved.</p>
             )}
 
             {/* Invoice from case */}
@@ -715,13 +698,12 @@ router.prefetch("/dashboard");
                   onChange={(e) => setInvoiceRate(e.target.value)}
                   className="w-full rounded-md border border-slate-700 bg-slate-950 px-2 py-1.5 text-xs text-slate-200 placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
                 />
-                {settings &&
-                  settings.defaultHourlyRate != null && (
-                    <p className="mt-1 text-[11px] text-slate-500">
-                      Pre-filled from your default hourly rate in Settings.
-                      You can adjust this before creating the invoice.
-                    </p>
-                  )}
+                {settings && settings.defaultHourlyRate != null && (
+                  <p className="mt-1 text-[11px] text-slate-500">
+                    Pre-filled from your default hourly rate in Settings. You can
+                    adjust this before creating the invoice.
+                  </p>
+                )}
               </div>
 
               <button
@@ -730,9 +712,7 @@ router.prefetch("/dashboard");
                 onClick={handleCreateInvoiceFromCase}
                 disabled={creatingInvoice}
               >
-                {creatingInvoice
-                  ? "Creating invoice…"
-                  : "Create invoice from this case"}
+                {creatingInvoice ? "Creating invoice…" : "Create invoice from this case"}
               </button>
 
               {invoiceError && (
@@ -740,15 +720,14 @@ router.prefetch("/dashboard");
               )}
 
               <p className="text-[11px] text-slate-500">
-                We&apos;ll create a Draft invoice in Billing &amp; Courts
-                using the case details and completed session hours. You can
-                review and adjust all numbers before sending anything to
-                clients or court.
+                We&apos;ll create a Draft invoice in Billing &amp; Courts using the case
+                details and completed session hours. You can review and adjust all numbers
+                before sending anything.
               </p>
             </div>
           </div>
 
-          {/* Messages panel (now in right column) */}
+          {/* Messages panel */}
           <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-4 shadow-sm space-y-3">
             <div className="flex items-center justify-between">
               <h2 className="text-sm font-medium text-slate-200">
@@ -771,15 +750,13 @@ router.prefetch("/dashboard");
             </div>
 
             {loadingMessages ? (
-              <p className="text-sm text-slate-500">
-                Loading messages…
-              </p>
+              <p className="text-sm text-slate-500">Loading messages…</p>
             ) : messagesError ? (
               <p className="text-sm text-red-400">{messagesError}</p>
             ) : messages.length === 0 ? (
               <p className="text-sm text-slate-500">
-                No messages linked to this case yet. Use “Add message” to log
-                prep notes, safety concerns, or things to cover next time.
+                No messages linked to this case yet. Use “Add message” to log prep notes,
+                safety concerns, or things to cover next time.
               </p>
             ) : (
               <div className="space-y-2 max-h-72 overflow-y-auto">
@@ -806,8 +783,8 @@ router.prefetch("/dashboard");
                 ))}
                 {messages.length > 5 && (
                   <p className="text-[11px] text-slate-500">
-                    Showing the 5 most recent messages. Use “View all” to see
-                    the full history.
+                    Showing the 5 most recent messages. Use “View all” to see the full
+                    history.
                   </p>
                 )}
               </div>
@@ -818,9 +795,8 @@ router.prefetch("/dashboard");
           <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-4 text-xs text-slate-500 shadow-sm">
             <p className="font-medium mb-1 text-slate-400">What&apos;s next?</p>
             <p>
-              Now that cases, sessions, invoices, and messages are connected,
-              you have a full history for each matter in one place. You can
-              move on to county reports and fine-tuning your billing workflow.
+              Sessions track timing and work. Cases track the matter. Close a case when it’s
+              finished, and archive it later to keep your list clean.
             </p>
           </div>
         </div>
