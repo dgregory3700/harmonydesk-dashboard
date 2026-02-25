@@ -1,54 +1,77 @@
-export function TodayPanel({
-  upcomingSessionsCount,
-  newInquiriesCount,
-  draftInvoicesCount,
-}: {
-  upcomingSessionsCount: number;
-  newInquiriesCount: number;
-  draftInvoicesCount: number;
-}) {
+import Link from "next/link";
+
+type TodayPanelProps = {
+  upcomingSessionsCount?: number;
+  completedSessionsCount?: number;
+  draftInvoicesCount?: number;
+  unsentEmailsCount?: number;
+};
+
+/**
+ * Quick Actions panel.
+ * Props are optional to keep the dashboard build stable even if the page
+ * renders <TodayPanel /> without counts (or older versions still pass counts).
+ */
+export function TodayPanel(_props: TodayPanelProps = {}) {
   return (
     <div className="rounded-2xl border border-slate-800 bg-slate-900/50 p-4">
       <h2 className="mb-3 text-sm font-semibold text-slate-200">
-        Today at a glance
+        Quick actions
       </h2>
 
       <p className="mb-3 text-[11px] text-slate-400">
-        This panel is intentionally operational (no booking concepts). It shows
-        only real, persisted signals.
+        Shortcuts to the real work. No booking language. No duplicated stats.
       </p>
 
-      <div className="rounded-xl border border-slate-800 bg-slate-950 px-3 py-3 space-y-3">
-        <div className="flex items-center justify-between">
-          <p className="text-xs font-medium text-slate-200">Upcoming sessions</p>
-          <p className="text-xs text-slate-300">{upcomingSessionsCount}</p>
-        </div>
+      <div className="space-y-2">
+        <Link
+          href="/calendar"
+          className="block rounded-xl border border-slate-800 bg-slate-950 px-4 py-3 hover:bg-slate-900/40"
+        >
+          <p className="text-xs font-medium text-slate-200">Calendar</p>
+          <p className="mt-1 text-[11px] text-slate-500">
+            Review upcoming sessions and mark completion.
+          </p>
+        </Link>
 
-        <div className="h-px bg-slate-800" />
+        <Link
+          href="/billing"
+          className="block rounded-xl border border-slate-800 bg-slate-950 px-4 py-3 hover:bg-slate-900/40"
+        >
+          <p className="text-xs font-medium text-slate-200">Billing</p>
+          <p className="mt-1 text-[11px] text-slate-500">
+            Prepare drafts and send invoices.
+          </p>
+        </Link>
 
-        <div className="flex items-center justify-between">
-          <p className="text-xs font-medium text-slate-200">New inquiries</p>
-          <p className="text-xs text-slate-300">{newInquiriesCount}</p>
-        </div>
+        <Link
+          href="/messages"
+          className="block rounded-xl border border-slate-800 bg-slate-950 px-4 py-3 hover:bg-slate-900/40"
+        >
+          <p className="text-xs font-medium text-slate-200">Messages</p>
+          <p className="mt-1 text-[11px] text-slate-500">
+            Send emails and review delivery.
+          </p>
+        </Link>
 
-        <div className="h-px bg-slate-800" />
+        <Link
+          href="/cases"
+          className="block rounded-xl border border-slate-800 bg-slate-950 px-4 py-3 hover:bg-slate-900/40"
+        >
+          <p className="text-xs font-medium text-slate-200">
+            Case files (reference)
+          </p>
+          <p className="mt-1 text-[11px] text-slate-500">
+            View the case record connected to your sessions.
+          </p>
+        </Link>
+      </div>
 
-        <div className="flex items-center justify-between">
-          <p className="text-xs font-medium text-slate-200">Draft invoices</p>
-          <p className="text-xs text-slate-300">{draftInvoicesCount}</p>
-        </div>
-
-        {upcomingSessionsCount === 0 &&
-        newInquiriesCount === 0 &&
-        draftInvoicesCount === 0 ? (
-          <>
-            <div className="h-px bg-slate-800" />
-            <p className="text-[11px] text-slate-500">
-              You&apos;re all caught up. As you add cases, sessions, and invoices,
-              this panel will reflect real workload.
-            </p>
-          </>
-        ) : null}
+      <div className="mt-3 rounded-xl border border-slate-800 bg-slate-950 px-4 py-3">
+        <p className="text-[11px] text-slate-500">
+          Tip: Your schedule is driven by <code>sessions</code>. If the dashboard
+          looks empty after creating a case, confirm you added a session record.
+        </p>
       </div>
     </div>
   );
