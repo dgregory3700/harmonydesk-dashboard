@@ -30,6 +30,16 @@ type Banner =
   | { kind: "error"; text: string }
   | null;
 
+const TIMEZONE_OPTIONS = [
+  { value: "America/Los_Angeles", label: "Pacific – America/Los_Angeles" },
+  { value: "America/Denver", label: "Mountain – America/Denver" },
+  { value: "America/Chicago", label: "Central – America/Chicago" },
+  { value: "America/New_York", label: "Eastern – America/New_York" },
+  { value: "America/Anchorage", label: "Alaska – America/Anchorage" },
+  { value: "Pacific/Honolulu", label: "Hawaii – Pacific/Honolulu" },
+  { value: "UTC", label: "UTC" },
+];
+
 export default function SettingsPage() {
   const [loading, setLoading] = useState(true);
   const [banner, setBanner] = useState<Banner>(null);
@@ -42,8 +52,12 @@ export default function SettingsPage() {
   const [phone, setPhone] = useState("");
   const [businessName, setBusinessName] = useState("");
   const [businessAddress, setBusinessAddress] = useState("");
-  const [defaultHourlyRate, setDefaultHourlyRate] = useState<number | string>(200);
-  const [defaultSessionDuration, setDefaultSessionDuration] = useState<number | string>(1.0);
+  const [defaultHourlyRate, setDefaultHourlyRate] = useState<number | string>(
+    200
+  );
+  const [defaultSessionDuration, setDefaultSessionDuration] = useState<
+    number | string
+  >(1.0);
   const [timezone, setTimezone] = useState("America/Los_Angeles");
 
   // County settings
@@ -58,6 +72,10 @@ export default function SettingsPage() {
     for (const c of counties) m.set(c.id, c);
     return m;
   }, [counties]);
+
+  const timezoneIsKnown = useMemo(() => {
+    return TIMEZONE_OPTIONS.some((tz) => tz.value === timezone);
+  }, [timezone]);
 
   async function loadAll() {
     setLoading(true);
@@ -144,8 +162,10 @@ export default function SettingsPage() {
     setBanner(null);
 
     try {
-      const rateNum = defaultHourlyRate === "" ? null : Number(defaultHourlyRate);
-      const durNum = defaultSessionDuration === "" ? null : Number(defaultSessionDuration);
+      const rateNum =
+        defaultHourlyRate === "" ? null : Number(defaultHourlyRate);
+      const durNum =
+        defaultSessionDuration === "" ? null : Number(defaultSessionDuration);
 
       const saved = await patchUserSettings({
         fullName: fullName.trim(),
@@ -383,16 +403,31 @@ export default function SettingsPage() {
               />
             </div>
 
+            {/* ✅ Timezone dropdown (replaces free-text input) */}
             <div>
               <label className="mb-1 block text-xs font-medium text-slate-400">
                 Timezone
               </label>
-              <input
+
+              <select
                 className="w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-200"
                 value={timezone}
                 onChange={(e) => setTimezone(e.target.value)}
-                placeholder="America/Los_Angeles"
-              />
+              >
+                <option value="">Select timezone…</option>
+                {TIMEZONE_OPTIONS.map((tz) => (
+                  <option key={tz.value} value={tz.value}>
+                    {tz.label}
+                  </option>
+                ))}
+                {!!timezone && !timezoneIsKnown && (
+                  <option value={timezone}>{timezone} (custom)</option>
+                )}
+              </select>
+
+              <p className="mt-1 text-[11px] text-slate-500">
+                Used for session times, calendar views, and reminders.
+              </p>
             </div>
 
             {/* Dark mode toggle removed (theme is fixed/deterministic) */}
@@ -431,7 +466,8 @@ export default function SettingsPage() {
           <div className="rounded-xl border border-slate-800 bg-slate-950/50 p-3">
             <p className="text-xs font-medium text-slate-300">Default county</p>
             <p className="mt-1 text-[11px] text-slate-500">
-              Current: <span className="text-slate-200">{defaultCountyLabel}</span>
+              Current:{" "}
+              <span className="text-slate-200">{defaultCountyLabel}</span>
             </p>
 
             <div className="mt-3 flex items-center gap-2">
