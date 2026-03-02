@@ -67,6 +67,9 @@ export default function SettingsPage() {
   const [newCountyName, setNewCountyName] = useState("");
   const [newCountyFormat, setNewCountyFormat] = useState<"csv" | "pdf">("csv");
 
+  // Subscription portal
+  const [portalLoading, setPortalLoading] = useState(false);
+
   const countiesById = useMemo(() => {
     const m = new Map<string, County>();
     for (const c of counties) m.set(c.id, c);
@@ -207,7 +210,9 @@ export default function SettingsPage() {
       console.error(err);
       setBanner({
         kind: "error",
-        text: err?.message ? String(err.message) : "Failed to update default county",
+        text: err?.message
+          ? String(err.message)
+          : "Failed to update default county",
       });
     }
   }
@@ -275,6 +280,40 @@ export default function SettingsPage() {
         kind: "error",
         text: err?.message ? String(err.message) : "Failed to delete county",
       });
+    }
+  }
+
+  async function handleManageSubscription() {
+    if (portalLoading) return;
+
+    setBanner(null);
+
+    try {
+      setPortalLoading(true);
+
+      const res = await fetch("/api/stripe/portal", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+
+      const body = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        throw new Error(body?.error || "Failed to open customer portal");
+      }
+
+      const url = body?.url as string | undefined;
+      if (!url) throw new Error("Portal URL missing");
+
+      window.location.href = url;
+    } catch (err: any) {
+      console.error("Portal error:", err);
+      setBanner({
+        kind: "error",
+        text: err?.message ? String(err.message) : "Failed to open customer portal",
+      });
+    } finally {
+      setPortalLoading(false);
     }
   }
 
@@ -403,7 +442,7 @@ export default function SettingsPage() {
               />
             </div>
 
-            {/* ✅ Timezone dropdown (replaces free-text input) */}
+            {/* ✅ Timezone dropdown */}
             <div>
               <label className="mb-1 block text-xs font-medium text-slate-400">
                 Timezone
@@ -429,8 +468,6 @@ export default function SettingsPage() {
                 Used for session times, calendar views, and reminders.
               </p>
             </div>
-
-            {/* Dark mode toggle removed (theme is fixed/deterministic) */}
           </div>
 
           <div className="flex items-center justify-end gap-2">
@@ -449,6 +486,29 @@ export default function SettingsPage() {
             </button>
           </div>
         </form>
+      </div>
+
+      {/* SUBSCRIPTION (Stripe Customer Portal) */}
+      <div className="rounded-2xl border border-slate-800 bg-slate-900/50 p-4">
+        <h2 className="text-sm font-semibold text-slate-200">Subscription</h2>
+        <p className="mt-1 text-xs text-slate-400">
+          Manage your plan, payment method, invoices, or cancel in Stripe.
+        </p>
+
+        <div className="mt-4">
+          <button
+            type="button"
+            onClick={handleManageSubscription}
+            disabled={portalLoading}
+            className="rounded-md border border-slate-700 bg-slate-950 px-4 py-2 text-sm font-medium text-slate-200 hover:bg-slate-900 disabled:opacity-60"
+          >
+            {portalLoading ? "Opening portal…" : "Manage subscription"}
+          </button>
+
+          <p className="mt-2 text-[11px] text-slate-500">
+            You’ll be redirected to Stripe’s secure customer portal.
+          </p>
+        </div>
       </div>
 
       {/* COUNTY SETTINGS */}
