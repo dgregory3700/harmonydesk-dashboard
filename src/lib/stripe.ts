@@ -5,6 +5,7 @@ export type StripeCheckoutSession = {
   created?: number;
   status?: string; // e.g. "complete"
   payment_status?: string; // e.g. "paid"
+  customer?: string | null; // ✅ needed for portal creation
   customer_details?: { email?: string | null };
 };
 
@@ -41,8 +42,31 @@ async function stripeGet(path: string, query?: Record<string, string>) {
   return res.json();
 }
 
+async function stripePostForm(path: string, form: URLSearchParams) {
+  const key = requireStripeKey();
+
+  const res = await fetch(`https://api.stripe.com${path}`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${key}`,
+      "Content-Type": "application/x-www-form-urlencoded",
+    },
+    body: form.toString(),
+    cache: "no-store",
+  });
+
+  if (!res.ok) {
+    const txt = await res.text();
+    throw new Error(`Stripe POST failed: ${res.status} ${txt}`);
+  }
+
+  return res.json();
+}
+
 export async function fetchStripeCheckoutSession(sessionId: string) {
-  return (await stripeGet(`/v1/checkout/sessions/${sessionId}`)) as StripeCheckoutSession;
+  return (await stripeGet(
+    `/v1/checkout/sessions/${sessionId}`
+  )) as StripeCheckoutSession;
 }
 
 /**
@@ -71,4 +95,20 @@ export async function findLatestCheckoutSessionIdByEmail(email: string) {
   });
 
   return good?.id ?? null;
+}
+
+export async function createCustomerPortalSession(
+  customerId: string,
+  returnUrl: string
+) {
+  const form = new URLSearchParams();
+  form.set("customer", customerId);
+  form.set("return_url", returnUrl);
+
+  // https://stripe.com/docs/api/customer_portal/sessions/create
+  return (await stripePostForm("/v1/billing_portal/sessions", form)) as {
+    id: string;
+    object: "billing_portal.session";
+    url: string;
+  };
 }
