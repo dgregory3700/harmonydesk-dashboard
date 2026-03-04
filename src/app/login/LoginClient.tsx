@@ -1,9 +1,30 @@
 "use client";
 
 import Link from "next/link";
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { supabaseBrowser } from "@/lib/supabase/client";
+
+type NoticeTone = "success" | "info";
+
+function mapNotice(message: string | null): { text: string; tone: NoticeTone } | null {
+  if (!message) return null;
+
+  // Canonical, app-owned messages.
+  if (message === "password_set") {
+    return { text: "Password set successfully. Please sign in to continue.", tone: "success" };
+  }
+
+  if (message === "check_email") {
+    return {
+      text: "Thanks — check your email for your password setup link to access your dashboard. (Also check spam/promotions.)",
+      tone: "info",
+    };
+  }
+
+  // Fallback: show raw message, but keep it tame.
+  return { text: `${message}`, tone: "info" };
+}
 
 export default function LoginClient({
   loadingOverride,
@@ -27,21 +48,27 @@ export default function LoginClient({
   const [error, setError] = useState<string | null>(
     urlError ? `${urlError}` : null
   );
-  const [notice, setNotice] = useState<string | null>(null);
+  const [notice, setNotice] = useState<{ text: string; tone: NoticeTone } | null>(null);
+
+  const effectiveLoading = loadingOverride ? true : loading;
+
+  // Compute notice deterministically from URL params.
+  const computedNotice = useMemo(() => mapNotice(urlMessage), [urlMessage]);
 
   useEffect(() => {
     if (urlEmail && typeof urlEmail === "string") {
       setEmail(urlEmail.trim().toLowerCase());
     }
 
-    if (urlMessage === "password_set") {
-      setNotice("Password set successfully. Please sign in to continue.");
+    if (computedNotice) {
+      setNotice(computedNotice);
+      // If we arrived here via an intentional message, clear any old error display.
+      setError((prev) => (urlError ? prev : null));
     } else if (urlMessage) {
-      setNotice(urlMessage);
+      // Safety fallback (shouldn't happen because mapNotice handles all truthy)
+      setNotice({ text: `${urlMessage}`, tone: "info" });
     }
-  }, [urlEmail, urlMessage]);
-
-  const effectiveLoading = loadingOverride ? true : loading;
+  }, [urlEmail, computedNotice, urlMessage, urlError]);
 
   async function handlePasswordLogin(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -73,6 +100,11 @@ export default function LoginClient({
     }
   }
 
+  const noticeStyles =
+    notice?.tone === "success"
+      ? "border-emerald-900/40 bg-emerald-900/20 text-emerald-300"
+      : "border-sky-900/40 bg-sky-900/20 text-sky-200";
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-slate-950">
       <div className="w-full max-w-md bg-slate-900/50 border border-slate-800 rounded-2xl p-8 shadow-lg backdrop-blur-sm">
@@ -86,8 +118,8 @@ export default function LoginClient({
         </div>
 
         {notice && !error && (
-          <div className="mb-4 rounded-lg border border-emerald-900/40 bg-emerald-900/20 p-3">
-            <p className="text-xs text-emerald-300">{notice}</p>
+          <div className={`mb-4 rounded-lg border p-3 ${noticeStyles}`}>
+            <p className="text-xs">{notice.text}</p>
           </div>
         )}
 
@@ -145,7 +177,7 @@ export default function LoginClient({
           <span className="text-slate-500">
             New customer?{" "}
             <span className="text-slate-400">
-              Complete setup after purchase.
+              Complete setup via the link emailed to you after purchase.
             </span>
           </span>
         </div>
