@@ -190,6 +190,12 @@ export default function LoginClient({
 
         <div className="mt-6 text-center">
           <Link
+  href="/forgot-password"
+  className="text-sm text-white-400 underline underline-offset-4 hover:text-orange-200"
+>
+  Forgot password?
+</Link>
+          <Link
             href="https://harmonydesk.ai"
             className="text-xs text-slate-400 hover:text-slate-200 transition-colors"
           >
