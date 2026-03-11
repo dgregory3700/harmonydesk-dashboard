@@ -7,12 +7,16 @@ import { supabaseBrowser } from "@/lib/supabase/client";
 
 type NoticeTone = "success" | "info";
 
-function mapNotice(message: string | null): { text: string; tone: NoticeTone } | null {
+function mapNotice(
+  message: string | null
+): { text: string; tone: NoticeTone } | null {
   if (!message) return null;
 
-  // Canonical, app-owned messages.
   if (message === "password_set") {
-    return { text: "Password set successfully. Please sign in to continue.", tone: "success" };
+    return {
+      text: "Password set successfully. Please sign in to continue.",
+      tone: "success",
+    };
   }
 
   if (message === "check_email") {
@@ -22,7 +26,6 @@ function mapNotice(message: string | null): { text: string; tone: NoticeTone } |
     };
   }
 
-  // Fallback: show raw message, but keep it tame.
   return { text: `${message}`, tone: "info" };
 }
 
@@ -48,11 +51,13 @@ export default function LoginClient({
   const [error, setError] = useState<string | null>(
     urlError ? `${urlError}` : null
   );
-  const [notice, setNotice] = useState<{ text: string; tone: NoticeTone } | null>(null);
+  const [notice, setNotice] = useState<{
+    text: string;
+    tone: NoticeTone;
+  } | null>(null);
 
   const effectiveLoading = loadingOverride ? true : loading;
 
-  // Compute notice deterministically from URL params.
   const computedNotice = useMemo(() => mapNotice(urlMessage), [urlMessage]);
 
   useEffect(() => {
@@ -62,10 +67,8 @@ export default function LoginClient({
 
     if (computedNotice) {
       setNotice(computedNotice);
-      // If we arrived here via an intentional message, clear any old error display.
       setError((prev) => (urlError ? prev : null));
     } else if (urlMessage) {
-      // Safety fallback (shouldn't happen because mapNotice handles all truthy)
       setNotice({ text: `${urlMessage}`, tone: "info" });
     }
   }, [urlEmail, computedNotice, urlMessage, urlError]);
@@ -82,12 +85,11 @@ export default function LoginClient({
       setError(null);
       setNotice(null);
 
-      const { error: loginError } = await supabaseBrowser.auth.signInWithPassword(
-        {
+      const { error: loginError } =
+        await supabaseBrowser.auth.signInWithPassword({
           email: cleanEmail,
           password,
-        }
-      );
+        });
 
       if (loginError) throw loginError;
 
@@ -106,7 +108,7 @@ export default function LoginClient({
       : "border-sky-900/40 bg-sky-900/20 text-sky-200";
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-slate-950">
+    <div className="min-h-screen flex items-center justify-center bg-slate-950 px-4">
       <div className="w-full max-w-md bg-slate-900/50 border border-slate-800 rounded-2xl p-8 shadow-lg backdrop-blur-sm">
         <div className="mb-6 text-center">
           <h1 className="text-2xl font-semibold text-slate-100">
@@ -123,7 +125,7 @@ export default function LoginClient({
           </div>
         )}
 
-        <form onSubmit={handlePasswordLogin} className="space-y-3">
+        <form onSubmit={handlePasswordLogin} className="space-y-4">
           <div>
             <label
               htmlFor="email"
@@ -145,12 +147,22 @@ export default function LoginClient({
           </div>
 
           <div>
-            <label
-              htmlFor="password"
-              className="block text-sm font-medium text-slate-300"
-            >
-              Password
-            </label>
+            <div className="flex items-center justify-between">
+              <label
+                htmlFor="password"
+                className="block text-sm font-medium text-slate-300"
+              >
+                Password
+              </label>
+
+              <Link
+                href="/forgot-password"
+                className="text-sm text-sky-400 underline underline-offset-4 hover:text-sky-300"
+              >
+                Forgot password?
+              </Link>
+            </div>
+
             <input
               id="password"
               name="password"
@@ -167,18 +179,16 @@ export default function LoginClient({
           <button
             type="submit"
             disabled={effectiveLoading}
-            className="mt-2 w-full rounded-lg bg-sky-600 px-4 py-2 text-sm font-medium text-white hover:bg-sky-500 disabled:opacity-60 focus:outline-none focus:ring-2 focus:ring-sky-500 transition-colors"
+            className="w-full rounded-lg bg-sky-600 px-4 py-2 text-sm font-medium text-white hover:bg-sky-500 disabled:opacity-60 focus:outline-none focus:ring-2 focus:ring-sky-500 transition-colors"
           >
             {effectiveLoading ? "Signing in…" : "Sign in"}
           </button>
         </form>
 
-        <div className="mt-4 flex items-center justify-between text-xs">
-          <span className="text-slate-500">
-            New customer?{" "}
-            <span className="text-slate-400">
-              Complete setup via the link emailed to you after purchase.
-            </span>
+        <div className="mt-4 text-xs text-slate-500">
+          New customer?{" "}
+          <span className="text-slate-400">
+            Complete setup via the link emailed to you after purchase.
           </span>
         </div>
 
@@ -189,12 +199,6 @@ export default function LoginClient({
         )}
 
         <div className="mt-6 text-center">
-          <Link
-  href="/forgot-password"
-  className="text-sm text-white-400 underline underline-offset-4 hover:text-orange-200"
->
-  Forgot password?
-</Link>
           <Link
             href="https://harmonydesk.ai"
             className="text-xs text-slate-400 hover:text-slate-200 transition-colors"
