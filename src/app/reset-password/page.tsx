@@ -1,13 +1,12 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
+import { supabaseBrowser } from "@/lib/supabase/client";
 
 export default function ResetPasswordPage() {
   const router = useRouter();
-  const supabase = useMemo(() => createClient(), []);
 
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -50,7 +49,7 @@ export default function ResetPasswordPage() {
         return;
       }
 
-      const { error } = await supabase.auth.setSession({
+      const { error } = await supabaseBrowser.auth.setSession({
         access_token: accessToken,
         refresh_token: refreshToken,
       });
@@ -73,7 +72,7 @@ export default function ResetPasswordPage() {
     return () => {
       isMounted = false;
     };
-  }, [supabase]);
+  }, []);
 
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -91,7 +90,7 @@ export default function ResetPasswordPage() {
 
     setSubmitting(true);
 
-    const { error } = await supabase.auth.updateUser({
+    const { error } = await supabaseBrowser.auth.updateUser({
       password,
     });
 
@@ -108,6 +107,9 @@ export default function ResetPasswordPage() {
       router.replace("/login");
     }, 1800);
   }
+
+  const showInvalidLinkState =
+    ready && !success && !!errorMessage && !password && !confirmPassword;
 
   return (
     <main className="min-h-screen bg-slate-950 text-slate-100">
@@ -139,7 +141,7 @@ export default function ResetPasswordPage() {
                 Go to login now
               </Link>
             </div>
-          ) : errorMessage && !password && !confirmPassword ? (
+          ) : showInvalidLinkState ? (
             <div className="space-y-4">
               <div className="rounded-xl border border-rose-800 bg-rose-950/40 p-4 text-sm text-rose-200">
                 {errorMessage}
