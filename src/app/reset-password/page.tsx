@@ -22,14 +22,19 @@ export default function ResetPasswordPage() {
       setErrorMessage(null);
 
       const search = new URLSearchParams(window.location.search);
-      const hash = window.location.hash;
+      const hash = window.location.hash.replace(/^#/, "");
+      const hashParams = new URLSearchParams(hash);
 
-      const code = search.get("code");
-      const typeFromQuery = search.get("type");
+      // Preferred SSR-safe path: token_hash from customized email template
+      const tokenHash =
+        search.get("token_hash") || hashParams.get("token_hash");
+      const flowType = search.get("type") || hashParams.get("type");
 
-      // PKCE / SSR path: ?code=...
-      if (code) {
-        const { error } = await supabaseBrowser.auth.exchangeCodeForSession(code);
+      if (tokenHash && flowType === "recovery") {
+        const { error } = await supabaseBrowser.auth.verifyOtp({
+          token_hash: tokenHash,
+          type: "recovery",
+        });
 
         if (!isMounted) return;
 
@@ -41,10 +46,28 @@ export default function ResetPasswordPage() {
           return;
         }
 
-        // Optional sanity check: if type exists and is not recovery, treat as invalid.
-        if (typeFromQuery && typeFromQuery !== "recovery") {
+        setReady(true);
+        return;
+      }
+
+      // Legacy fallback: access/refresh token flow
+      const accessToken =
+        search.get("access_token") || hashParams.get("access_token");
+      const refreshToken =
+        search.get("refresh_token") || hashParams.get("refresh_token");
+      const legacyType = search.get("type") || hashParams.get("type");
+
+      if (accessToken && refreshToken && legacyType === "recovery") {
+        const { error } = await supabaseBrowser.auth.setSession({
+          access_token: accessToken,
+          refresh_token: refreshToken,
+        });
+
+        if (!isMounted) return;
+
+        if (error) {
           setErrorMessage(
-            "This password reset link is invalid or expired. Please request a new one."
+            error.message || "This password reset link is invalid or expired."
           );
           setReady(true);
           return;
@@ -54,47 +77,12 @@ export default function ResetPasswordPage() {
         return;
       }
 
-      // Fallback for non-PKCE / token-based flows.
-      const accessTokenFromQuery = search.get("access_token");
-      const refreshTokenFromQuery = search.get("refresh_token");
-
-      let accessToken = accessTokenFromQuery;
-      let refreshToken = refreshTokenFromQuery;
-      let flowType = typeFromQuery;
-
-      if (!accessToken || !refreshToken) {
-        const hashParams = new URLSearchParams(hash.replace(/^#/, ""));
-        accessToken = hashParams.get("access_token");
-        refreshToken = hashParams.get("refresh_token");
-        flowType = flowType || hashParams.get("type");
-      }
-
-      if (flowType !== "recovery" || !accessToken || !refreshToken) {
-        if (isMounted) {
-          setErrorMessage(
-            "This password reset link is invalid or expired. Please request a new one."
-          );
-          setReady(true);
-        }
-        return;
-      }
-
-      const { error } = await supabaseBrowser.auth.setSession({
-        access_token: accessToken,
-        refresh_token: refreshToken,
-      });
-
-      if (!isMounted) return;
-
-      if (error) {
+      if (isMounted) {
         setErrorMessage(
-          error.message || "This password reset link is invalid or expired."
+          "This password reset link is invalid or expired. Please request a new one."
         );
         setReady(true);
-        return;
       }
-
-      setReady(true);
     }
 
     initializeRecoverySession();
