@@ -21,12 +21,42 @@ export default function ResetPasswordPage() {
     async function initializeRecoverySession() {
       setErrorMessage(null);
 
-      const hash = window.location.hash;
       const search = new URLSearchParams(window.location.search);
+      const hash = window.location.hash;
 
+      const code = search.get("code");
+      const typeFromQuery = search.get("type");
+
+      // PKCE / SSR path: ?code=...
+      if (code) {
+        const { error } = await supabaseBrowser.auth.exchangeCodeForSession(code);
+
+        if (!isMounted) return;
+
+        if (error) {
+          setErrorMessage(
+            error.message || "This password reset link is invalid or expired."
+          );
+          setReady(true);
+          return;
+        }
+
+        // Optional sanity check: if type exists and is not recovery, treat as invalid.
+        if (typeFromQuery && typeFromQuery !== "recovery") {
+          setErrorMessage(
+            "This password reset link is invalid or expired. Please request a new one."
+          );
+          setReady(true);
+          return;
+        }
+
+        setReady(true);
+        return;
+      }
+
+      // Fallback for non-PKCE / token-based flows.
       const accessTokenFromQuery = search.get("access_token");
       const refreshTokenFromQuery = search.get("refresh_token");
-      const typeFromQuery = search.get("type");
 
       let accessToken = accessTokenFromQuery;
       let refreshToken = refreshTokenFromQuery;
@@ -104,7 +134,7 @@ export default function ResetPasswordPage() {
     setSubmitting(false);
 
     setTimeout(() => {
-      router.replace("/login");
+      router.replace("/login?message=password_set");
     }, 1800);
   }
 
@@ -135,7 +165,7 @@ export default function ResetPasswordPage() {
               </div>
 
               <Link
-                href="/login"
+                href="/login?message=password_set"
                 className="inline-flex items-center rounded-xl border border-slate-700 px-4 py-2 text-sm font-medium text-slate-200 transition hover:bg-slate-800"
               >
                 Go to login now
