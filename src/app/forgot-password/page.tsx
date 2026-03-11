@@ -1,11 +1,10 @@
 "use client";
 
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useState } from "react";
 import Link from "next/link";
-import { createClient } from "@/lib/supabase/client";
+import { supabaseBrowser } from "@/lib/supabase/client";
 
 export default function ForgotPasswordPage() {
-  const supabase = useMemo(() => createClient(), []);
   const [email, setEmail] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [sent, setSent] = useState(false);
@@ -21,9 +20,10 @@ export default function ForgotPasswordPage() {
         ? `${window.location.origin}/reset-password`
         : "https://app.harmonydesk.ai/reset-password";
 
-    const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), {
-      redirectTo,
-    });
+    const { error } = await supabaseBrowser.auth.resetPasswordForEmail(
+      email.trim(),
+      { redirectTo }
+    );
 
     if (error) {
       setErrorMessage(error.message || "Unable to send reset email.");
