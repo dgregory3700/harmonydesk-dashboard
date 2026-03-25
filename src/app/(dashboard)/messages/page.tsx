@@ -114,7 +114,7 @@ export default function MessagesPage() {
             Messages
           </h1>
           <p className="text-sm text-slate-400">
-            Keep internal notes or message history linked to your cases.
+            Keep internal notes or message history linked to your cases — or send messages by email when needed.
           </p>
         </div>
 
@@ -129,8 +129,7 @@ export default function MessagesPage() {
       {/* Search */}
       <div className="flex flex-col gap-3 rounded-xl border border-slate-800 bg-slate-900/50 p-4 shadow-sm md:flex-row md:items-center md:justify-between">
         <p className="text-xs text-slate-400">
-          Messages are internal-only for now. Later we can connect email or SMS
-          providers.
+          Messages can be kept internal or sent out via email.
         </p>
         <div className="w-full md:w-64">
           <input
