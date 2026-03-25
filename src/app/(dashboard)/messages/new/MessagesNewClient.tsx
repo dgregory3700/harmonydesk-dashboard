@@ -262,15 +262,17 @@ export default function MessagesNewClient() {
             </div>
 
             <div className="pt-2 border-t border-slate-800 space-y-2">
-              <label className="inline-flex items-center gap-2 text-xs text-slate-400 hover:text-slate-200 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={alsoSendAsEmail}
-                  onChange={(e) => setAlsoSendAsEmail(e.target.checked)}
-                  className="h-3 w-3 rounded border border-slate-600 bg-slate-900 accent-sky-500"
-                />
-                <span>Also send as email</span>
-              </label>
+              <label className="flex items-center space-x-3 mt-4 cursor-pointer">
+  <input
+    type="checkbox"
+    checked={alsoSendAsEmail}
+    onChange={(e) => setAlsoSendAsEmail(e.target.checked)}
+    className="h-6 w-6 rounded border border-slate-600 bg-slate-900 focus:ring-sky-500"
+  />
+  <span className="text-lg font-semibold text-slate-200">
+    Also send as email
+  </span>
+</label>
 
               {alsoSendAsEmail && (
                 <div className="space-y-1">
