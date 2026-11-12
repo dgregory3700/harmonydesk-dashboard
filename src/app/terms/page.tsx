@@ -124,8 +124,8 @@ export default function TermsOfServicePage() {
         <h2 className="text-lg font-semibold mt-6">12. Contact</h2>
         <p>
           If you have any questions about these Terms, please contact us at{" "}
-          <a href="mailto:contact@harmonydesk.ai" className="underline">
-            contact@harmonydesk.ai
+          <a href="mailto:duel@dueltech.io" className="underline">
+            duel@dueltech.io
           </a>.
         </p>
 

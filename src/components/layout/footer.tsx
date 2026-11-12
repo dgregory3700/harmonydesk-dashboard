@@ -14,7 +14,7 @@ export default function Footer() {
           <Link href="/privacy" className="hover:underline">
             Privacy Policy
           </Link>
-          <a href="mailto:contact@harmonydesk.ai" className="hover:underline">
+          <a href="mailto:duel@dueltech.io" className="hover:underline">
             Contact
           </a>
         </div>

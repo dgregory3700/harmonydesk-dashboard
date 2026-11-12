@@ -140,8 +140,8 @@ export default function PrivacyPolicyPage() {
         <p>
           If you have questions about this Privacy Policy or our data practices,
           please contact us at{" "}
-          <a href="mailto:contact@harmonydesk.ai" className="underline">
-            contact@harmonydesk.ai
+          <a href="mailto:duel@dueltech.io" className="underline">
+            duel@dueltech.io
           </a>.
         </p>
 
